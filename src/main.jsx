@@ -1,0 +1,2394 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  AlertTriangle,
+  BarChart3,
+  Bell,
+  Boxes,
+  BriefcaseBusiness,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardCheck,
+  Command,
+  Factory,
+  FileText,
+  Gauge,
+  LineChart,
+  Loader2,
+  Map,
+  MapPin,
+  Menu,
+  Navigation,
+  Package,
+  Plus,
+  ReceiptText,
+  Route,
+  Search,
+  Settings,
+  ShoppingCart,
+  Sparkles,
+  Target,
+  Truck,
+  Users,
+  Warehouse,
+  X
+} from 'lucide-react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart as ReLineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
+import './styles.css';
+
+const DEFAULT_USER = { email: 'miko@gmail.com', password: '1234567890' };
+const currency = value => `Ksh${Number(value || 0).toLocaleString()}`;
+const defaultReportDates = () => ({
+  startDate: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
+  endDate: new Date().toISOString().slice(0, 10)
+});
+
+async function rpc(fn, args = []) {
+  const res = await fetch('/api/rpc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fn, args })
+  });
+  const body = await res.json();
+  if (body.error) throw new Error(body.error);
+  return body.result;
+}
+
+function downloadBase64File(file) {
+  const bytes = Uint8Array.from(atob(file.content), c => c.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType || 'text/plain' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.fileName || 'report.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function useServer(user, fn, args = [], deps = []) {
+  const [state, setState] = useState({ loading: true, data: null, error: '' });
+  useEffect(() => {
+    let alive = true;
+    setState(s => ({ ...s, loading: true, error: '' }));
+    rpc(fn, [user, ...args])
+      .then(data => alive && setState({ loading: false, data, error: '' }))
+      .catch(error => alive && setState({ loading: false, data: null, error: error.message }));
+    return () => {
+      alive = false;
+    };
+  }, [fn, user?.id, ...deps]);
+  return state;
+}
+
+const nav = [
+  { id: 'dashboard', label: 'Dashboard', icon: Gauge },
+  { id: 'analytics', label: 'Analytics', icon: LineChart },
+  { id: 'sales', label: 'Sales', icon: ShoppingCart },
+  { id: 'purchasing', label: 'Purchases', icon: ClipboardCheck },
+  { id: 'inventory', label: 'Inventory', icon: Boxes },
+  { id: 'finance', label: 'Finance', icon: CircleDollarSign },
+  { id: 'production', label: 'Manufacturing', icon: Factory },
+  { id: 'customers', label: 'CRM', icon: Users },
+  { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'inputs', label: 'Inputs', icon: Command },
+  { id: 'settings', label: 'Settings', icon: Settings }
+];
+
+function App() {
+  const [user, setUser] = useState(() => {
+    const raw = localStorage.getItem('farmtrack-user');
+    return raw ? JSON.parse(raw) : null;
+  });
+  const [page, setPage] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  if (!user) return <Login onLogin={u => {
+    localStorage.setItem('farmtrack-user', JSON.stringify(u));
+    setUser(u);
+  }} />;
+
+  return (
+    <div className="app-shell">
+      <Sidebar page={page} setPage={setPage} open={sidebarOpen} setOpen={setSidebarOpen} user={user} />
+      <main className="main-shell">
+        <Topbar user={user} onMenu={() => setSidebarOpen(true)} onLogout={() => {
+          localStorage.removeItem('farmtrack-user');
+          setUser(null);
+        }} />
+        <div className="content-grid">
+          {page === 'dashboard' && <Dashboard user={user} setPage={setPage} />}
+          {page === 'analytics' && <AnalyticsCenter user={user} />}
+          {page === 'sales' && <SalesModule user={user} />}
+          {page === 'purchasing' && <ProcurementWorkspace user={user} />}
+          {page === 'inventory' && <InventoryWorkspace user={user} />}
+          {page === 'finance' && <Finance user={user} />}
+          {page === 'production' && <Manufacturing user={user} />}
+          {page === 'customers' && <DataPage user={user} title="CRM Customers" icon={Users} fn="getCustomers" columns={['name', 'email', 'phone', 'city', 'balance', 'status']} />}
+          {page === 'reports' && <Reports user={user} title="Reports" />}
+          {page === 'inputs' && <InputCenter user={user} />}
+          {page === 'settings' && <SettingsPage user={user} />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Login({ onLogin }) {
+  const [form, setForm] = useState(DEFAULT_USER);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const result = await rpc('loginUser', [form.email, form.password]);
+      if (!result.success) throw new Error(result.message || 'Login failed');
+      onLogin(result.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="login-screen">
+      <section className="login-panel">
+        <div className="brand-lockup">
+          <div className="brand-mark">ERP</div>
+          <div>
+            <h1>Farmtrack Enterprise</h1>
+            <p>Connected agriculture operating system</p>
+          </div>
+        </div>
+        <form onSubmit={submit} className="login-form">
+          {error && <div className="error-banner">{error}</div>}
+          <label>Email<input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
+          <label>Password<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label>
+          <button disabled={loading}>{loading ? <Loader2 className="spin" size={20} /> : 'Sign in'}</button>
+          <span>Demo: miko@gmail.com / 1234567890</span>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function Sidebar({ page, setPage, open, setOpen, user }) {
+  return (
+    <>
+      <aside className={`sidebar ${open ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <span>ERP</span>
+          <Package size={38} />
+        </div>
+        <nav>
+          {nav.map(item => {
+            const Icon = item.icon;
+            return (
+              <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => {
+                setPage(item.id);
+                setOpen(false);
+              }}>
+                <Icon size={20} />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="sidebar-user">
+          <div className="avatar">{user.name?.[0] || 'U'}</div>
+          <div>
+            <strong>{user.name}</strong>
+            <span>{user.role}</span>
+          </div>
+          <ChevronDown size={18} />
+        </div>
+      </aside>
+      {open && <button className="mobile-scrim" onClick={() => setOpen(false)} aria-label="Close menu" />}
+    </>
+  );
+}
+
+function Topbar({ user, onMenu, onLogout }) {
+  return (
+    <header className="topbar">
+      <button className="menu-button" onClick={onMenu}><Menu size={22} /></button>
+      <div className="command-search">
+        <Search size={18} />
+        <input placeholder="Search anything..." />
+        <Command size={16} />
+      </div>
+      <div className="topbar-actions">
+        <button><Sparkles size={20} /></button>
+        <button className="notify"><Bell size={20} /><span>3</span></button>
+        <button className="date-chip"><Calendar size={16} /> May 12 - Jun 12, 2026</button>
+        <button className="new-button" onClick={() => window.dispatchEvent(new CustomEvent('farmtrack:new-record'))}><Plus size={18} /> New</button>
+        <button className="logout" onClick={onLogout}>{user.name?.[0] || 'U'}</button>
+      </div>
+    </header>
+  );
+}
+
+function Dashboard({ user, setPage }) {
+  const { loading, data, error } = useServer(user, 'getDashboardData');
+  if (loading) return <Loading title="Dashboard" />;
+  if (error) return <ErrorState title="Dashboard" error={error} />;
+
+  const s = data.stats;
+  const monthly = data.charts.months.map((month, index) => ({
+    month,
+    revenue: data.charts.thisYearRevenue[index] || 0,
+    expenses: Math.round((data.charts.thisYearRevenue[index] || 0) * 0.38),
+    profit: Math.round((data.charts.thisYearRevenue[index] || 0) * 0.62)
+  }));
+  const categories = data.charts.categorySales.slice(0, 5);
+  const colors = ['#6d4aff', '#377dff', '#3cc76f', '#ffac33', '#f64e4e'];
+  const command = data.commandCenter || {};
+
+  return (
+    <section className="page-stack">
+      <CommandHero command={command} />
+      <div className="control-grid">
+        <KpiCard icon={CircleDollarSign} label="Revenue" value={currency(s.totalRevenue)} change={s.revenueChange || 3.2} tone="green" />
+        <KpiCard icon={LineChart} label="Profit" value={currency(s.netProfit)} change={s.profitChange || 2.4} tone="green" />
+        <KpiCard icon={BriefcaseBusiness} label="Cash Position" value={currency(s.cashPosition)} change={8.4} tone="blue" />
+        <KpiCard icon={Warehouse} label="Inventory Value" value={currency(s.inventoryValue)} change={-s.lowStockItems} tone={s.lowStockItems ? 'red' : 'green'} />
+        <KpiCard icon={Users} label="Sales Pipeline" value={currency(s.salesPipeline)} change={12.4} tone="blue" />
+        <KpiCard icon={Factory} label="Production" value={Number(s.productionOpen || 0).toLocaleString()} change={s.productionOpen ? -4 : 4} tone={s.productionOpen ? 'red' : 'green'} />
+      </div>
+      <div className="dashboard-grid">
+        <Panel className="span-4 attention-panel" title="Needs Attention">
+          <AttentionList items={command.attention || []} onNavigate={setPage} />
+        </Panel>
+        <Panel className="span-4 action-panel" title="Recommended Actions">
+          <ActionList items={command.actions || []} onNavigate={setPage} />
+        </Panel>
+        <Panel className="span-4 forecast-panel" title="Likely Next">
+          <ForecastCard forecast={command.forecast} />
+        </Panel>
+        <Panel className="span-7" title="Revenue Overview" action="Monthly">
+          <ResponsiveContainer width="100%" height={260}>
+            <ReLineChart data={monthly} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#eef0f3" vertical={false} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: '#667085', fontSize: 12 }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fill: '#667085', fontSize: 12 }} tickFormatter={v => `Ksh${Math.round(v / 1000)}K`} />
+              <Tooltip formatter={v => currency(v)} />
+              <Line type="monotone" dataKey="revenue" stroke="#050505" strokeWidth={3} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="expenses" stroke="#a7afbd" strokeWidth={3} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="profit" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} />
+            </ReLineChart>
+          </ResponsiveContainer>
+        </Panel>
+        <Panel className="span-5" title="Sales by Category">
+          <div className="category-panel">
+            <ResponsiveContainer width="45%" height={230}>
+              <PieChart>
+                <Pie data={categories} dataKey="total" innerRadius={62} outerRadius={104} paddingAngle={0}>
+                  {categories.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="category-list">
+              {categories.map((item, index) => (
+                <div key={item.name}>
+                  <span style={{ '--dot': colors[index % colors.length] }}>{item.name}</span>
+                  <strong>{currency(item.total)}</strong>
+                  <em>{Math.max(8, Math.round((item.total / Math.max(1, s.totalRevenue)) * 100))}%</em>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+        <Panel className="span-6" title="Recent Orders" action="View all">
+          <SimpleTable rows={data.recentSales || []} columns={['saleNo', 'customerName', 'date', 'total', 'status']} />
+        </Panel>
+        <Panel className="span-6" title="Top Products" action="View all">
+          <TopProducts categories={categories} />
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function AnalyticsCenter({ user }) {
+  const { loading, data, error } = useServer(user, 'getAnalyticsData');
+  const tabs = [
+    ['revenue', 'Revenue Intelligence'],
+    ['sales', 'Sales Intelligence'],
+    ['inventory', 'Inventory Intelligence'],
+    ['production', 'Production Intelligence'],
+    ['procurement', 'Procurement Intelligence'],
+    ['customer', 'Customer Intelligence'],
+    ['financial', 'Financial Intelligence'],
+    ['ai', 'AI Intelligence'],
+    ['forecasting', 'Forecasting']
+  ];
+  const [activeTab, setActiveTab] = useState('revenue');
+  const [tabFilters, setTabFilters] = useState({});
+  const tabState = useServer(user, 'getAnalyticsTabData', [activeTab, tabFilters[activeTab] || {}], [activeTab, JSON.stringify(tabFilters[activeTab] || {})]);
+  if (loading) return <Loading title="Analytics" />;
+  if (error) return <ErrorState title="Analytics" error={error} />;
+  if (tabState.error) return <ErrorState title="Analytics" error={tabState.error} />;
+  const active = tabState.data;
+  const colors = ['#050505', '#6d4aff', '#377dff', '#22c55e', '#ffac33', '#f64e4e'];
+  return (
+    <section className="page-stack analytics-page">
+      <section className="analytics-hero">
+        <div>
+          <span>Advanced Analytics Command Center</span>
+          <h1>{data.hero.title}</h1>
+          <p>{data.hero.subtitle}</p>
+          {data.dataSource && (
+            <div className={`data-source-badge ${data.dataSource.normalized ? 'live' : 'fallback'}`}>
+              <CheckCircle2 size={15} />
+              <strong>{data.dataSource.mode}</strong>
+              <em>{data.dataSource.message}</em>
+            </div>
+          )}
+        </div>
+        <div className="confidence-ring">
+          <strong>{data.hero.confidence}%</strong>
+          <span>Decision confidence</span>
+        </div>
+      </section>
+
+      <div className="analytics-tabs">
+        {tabs.map(([id, name]) => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id)}>{name}</button>)}
+      </div>
+
+      {active && (
+        <>
+          <div className="analytics-filter-bar">
+            {['dateRange', 'products', 'customers', 'regions', 'salesReps'].map(key => (
+              <button key={key} onClick={() => setTabFilters(prev => ({ ...prev, [activeTab]: { ...(prev[activeTab] || {}), [key]: active.filters[key] } }))}>
+                {label(key)}: {active.filters[key]}
+              </button>
+            ))}
+            <span>{tabState.loading ? 'Refreshing...' : `Last refresh ${new Date(active.lastRefresh).toLocaleTimeString()}`}</span>
+          </div>
+
+          <div className="analytics-kpi-row">
+            {active.kpis.map(kpi => (
+              <article key={kpi.label}>
+                <span>{kpi.label}</span>
+                <strong>{kpi.type === 'money' ? currency(kpi.value) : `${kpi.value}${kpi.suffix || ''}`}</strong>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="dashboard-grid">
+        {active && (
+          <Panel className="span-12 sales-main-chart" title={active.tabName} action={active.chartMetric}>
+            <SalesTrendChart data={active.trend} metric={active.chartMetric} />
+          </Panel>
+        )}
+        {active && (
+          <>
+            <Panel className="span-6" title={`${active.tabName} Drilldown`}>
+              <SimpleTable rows={(active.breakdown || active.trend || []).map((row, index) => ({ id: index, ...row }))} columns={active.breakdown?.length ? ['name', 'value'] : ['month', active.chartMetric]} />
+            </Panel>
+            <Panel className="span-6" title={`${active.tabName} Reports`}>
+              <div className="sales-report-grid compact-reports">
+                {active.reports.map(report => (
+                  <article key={report.name}>
+                    <strong>{report.name}</strong>
+                    <span>{report.dateRange} - {report.records} records</span>
+                    <div>{report.exports.map(x => <button key={x}>{x}</button>)}</div>
+                  </article>
+                ))}
+              </div>
+            </Panel>
+          </>
+        )}
+        <Panel className="span-7" title="Revenue Waterfall" action="Drill down">
+          <div className="waterfall">
+            {data.revenueWaterfall.map((item, index) => (
+              <div key={item.label} className={item.type}>
+                <span>{item.label}</span>
+                <strong>{currency(Math.abs(item.value))}</strong>
+                {index < data.revenueWaterfall.length - 1 && <em>↓</em>}
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel className="span-5" title="Revenue Heatmap" action="Month">
+          <div className="heatmap">
+            {data.revenueHeatmap.map(cell => (
+              <span key={cell.day} title={`Day ${cell.day}: ${currency(cell.value * 1000)}`} style={{ opacity: Math.min(1, 0.2 + cell.value / 90) }} />
+            ))}
+          </div>
+        </Panel>
+        <Panel className="span-6" title="Revenue by Product">
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart3Compat data={data.revenueBreakdown} colors={colors} />
+          </ResponsiveContainer>
+        </Panel>
+        <Panel className="span-6" title="Customer Intelligence">
+          <div className="customer-intelligence-list">
+            {data.customerIntelligence.map(customer => (
+              <article key={customer.name}>
+                <div>
+                  <strong>{customer.name}</strong>
+                  <span>{customer.health} · {customer.churnRisk}% churn risk</span>
+                </div>
+                <b>{currency(customer.lifetimeValue)}</b>
+              </article>
+            ))}
+          </div>
+        </Panel>
+        <Panel className="span-4" title="Inventory Intelligence">
+          <MetricStack items={[
+            ['Healthy', data.inventoryIntelligence.healthy],
+            ['Low', data.inventoryIntelligence.low],
+            ['Dead', data.inventoryIntelligence.dead],
+            ['Fast Moving', data.inventoryIntelligence.fastMoving],
+            ['Slow Moving', data.inventoryIntelligence.slowMoving],
+            ['Turnover', `${data.inventoryIntelligence.turnover}x`]
+          ]} />
+        </Panel>
+        <Panel className="span-4" title="Procurement Intelligence">
+          <Scorecards items={data.procurementIntelligence} />
+        </Panel>
+        <Panel className="span-4" title="Production Intelligence">
+          <MetricStack items={[
+            ['Planned Output', data.productionIntelligence.planned],
+            ['Actual Output', data.productionIntelligence.completed],
+            ['Delayed Jobs', data.productionIntelligence.delayed],
+            ['Waste', data.productionIntelligence.waste]
+          ]} />
+        </Panel>
+        <Panel className="span-6" title="Sales Funnel">
+          <div className="funnel">
+            {data.salesIntelligence.funnel.map((stage, index) => (
+              <div key={stage.stage} style={{ width: `${100 - index * 10}%` }}>
+                <span>{stage.stage}</span>
+                <strong>{stage.count}</strong>
+                <em>{currency(stage.value)}</em>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel className="span-6" title="Financial Intelligence">
+          <MetricStack items={[
+            ['Cash 30 Days', currency(data.financialIntelligence.cash30)],
+            ['Cash 60 Days', currency(data.financialIntelligence.cash60)],
+            ['Cash 90 Days', currency(data.financialIntelligence.cash90)],
+            ['AR Risk Items', data.financialIntelligence.arRisk],
+            ['Profitability', `${data.financialIntelligence.profitability}%`]
+          ]} />
+        </Panel>
+        <Panel className="span-7" title="AI Business Intelligence">
+          <div className="ai-insights">
+            {(active?.insights || data.aiIntelligence).map(item => (
+              <article key={item.question}>
+                <strong>{item.question}</strong>
+                <p>{item.answer}</p>
+                <span>Sources: {(item.records || []).join(', ')}</span>
+              </article>
+            ))}
+          </div>
+        </Panel>
+        <Panel className="span-5" title="Executive War Room">
+          <WarRoom warRoom={data.warRoom} />
+        </Panel>
+        <Panel className="span-12" title="Report Generation Center" action="Create report">
+          <div className="report-grid">
+            {(active?.reports || data.reports.map(name => ({ name }))).map(report => <button key={report.name}><FileText size={20} />{report.name}</button>)}
+          </div>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function BarChart3Compat({ data, colors }) {
+  return (
+    <ReLineChart data={data} margin={{ top: 18, right: 20, bottom: 8, left: 0 }}>
+      <CartesianGrid stroke="#eef0f3" vertical={false} />
+      <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#667085', fontSize: 11 }} />
+      <YAxis tickLine={false} axisLine={false} tick={{ fill: '#667085', fontSize: 12 }} tickFormatter={v => `Ksh${Math.round(v / 1000)}K`} />
+      <Tooltip formatter={v => currency(v)} />
+      <Line type="monotone" dataKey="value" stroke={colors[1]} strokeWidth={3} dot={{ r: 5 }} />
+    </ReLineChart>
+  );
+}
+
+function MetricStack({ items }) {
+  return (
+    <div className="metric-stack">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Scorecards({ items }) {
+  return (
+    <div className="scorecards">
+      {items.slice(0, 4).map(item => (
+        <article key={item.supplier}>
+          <strong>{item.supplier}</strong>
+          <span>Lead {item.leadTime}d · Quality {item.quality}%</span>
+          <div><em style={{ width: `${item.deliveryAccuracy}%` }} /></div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function WarRoom({ warRoom }) {
+  return (
+    <div className="war-room">
+      <h3>Risk Center</h3>
+      {warRoom.risks.map(item => <div key={item.label}><span>{item.label}</span><strong>{item.level}</strong><em>{item.value}</em></div>)}
+      <h3>Opportunity Center</h3>
+      {warRoom.opportunities.map(item => <div key={item.label}><span>{item.label}</span><strong>{currency(item.value)}</strong></div>)}
+      <h3>Predictive Center</h3>
+      {warRoom.forecasts.map(item => <div key={item.label}><span>{item.label}</span><strong>{typeof item.value === 'number' && item.value > 10000 ? currency(item.value) : item.value}</strong></div>)}
+    </div>
+  );
+}
+
+function CommandHero({ command }) {
+  return (
+    <section className="command-hero">
+      <div>
+        <span>{command.roleProfile || 'Executive Command Center'}</span>
+        <h1>{command.greeting || 'Good Morning'}</h1>
+        <p>{command.company || 'Farmtrack Bio Sciences Ltd'} · Business control center</p>
+      </div>
+      <div className="hero-pulse">
+        <span />
+        Live business signals
+      </div>
+    </section>
+  );
+}
+
+const areaToPage = area => ({
+  Inventory: 'inventory',
+  Delivery: 'sales',
+  Sales: 'sales',
+  Approvals: 'sales',
+  CRM: 'customers',
+  Procurement: 'purchasing',
+  Finance: 'finance',
+  Production: 'production'
+}[area] || 'dashboard');
+
+function AttentionList({ items, onNavigate }) {
+  if (!items.length) return <div className="quiet-state">No urgent business risks detected.</div>;
+  return (
+    <div className="attention-list">
+      {items.map((item, index) => (
+        <article key={index} className={item.severity}>
+          <strong>{item.title}</strong>
+          <p>{item.detail}</p>
+          <span>{item.area}</span>
+          <button onClick={() => onNavigate?.(areaToPage(item.area))}>{item.action}</button>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ActionList({ items, onNavigate }) {
+  return (
+    <div className="action-list">
+      {items.map((item, index) => (
+        <button key={index} onClick={() => onNavigate?.(areaToPage(item.area))}>
+          <span>{item.label}</span>
+          <strong>{item.count}</strong>
+          <em>{item.area}</em>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ForecastCard({ forecast }) {
+  if (!forecast) return <div className="quiet-state">Forecast unavailable.</div>;
+  return (
+    <div className="forecast-card">
+      <div>
+        <span>Next month revenue</span>
+        <strong>{currency(forecast.revenueNextMonth)}</strong>
+      </div>
+      <div>
+        <span>Expected cash</span>
+        <strong>{currency(forecast.cashExpected)}</strong>
+      </div>
+      <div>
+        <span>Risk level</span>
+        <strong>{forecast.riskLevel}</strong>
+      </div>
+      <p>{forecast.summary}</p>
+    </div>
+  );
+}
+
+function KpiCard({ icon: Icon, label, value, change, tone }) {
+  return (
+    <article className="kpi-card">
+      <div className="kpi-head">
+        <span><Icon size={22} /></span>
+        <strong>{label}</strong>
+      </div>
+      <h3>{value}</h3>
+      <div className={`change ${change >= 0 ? 'up' : 'down'} ${tone}`}>{change >= 0 ? '+' : ''}{change}%</div>
+      <small>vs last month</small>
+      <Sparkline tone={tone} />
+    </article>
+  );
+}
+
+function Sparkline({ tone }) {
+  const data = [12, 18, 16, 24, 19, 28, 22, 20, 29, 35].map((v, i) => ({ i, v }));
+  const color = tone === 'red' ? '#ff2d2d' : tone === 'blue' ? '#2563eb' : '#1db954';
+  return (
+    <div className="sparkline">
+      <ResponsiveContainer width="100%" height={44}>
+        <AreaChart data={data}>
+          <Area type="monotone" dataKey="v" stroke={color} fill="transparent" strokeWidth={2.5} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function Panel({ title, action, className = '', children }) {
+  return (
+    <article className={`panel ${className}`}>
+      <header>
+        <h2>{title}</h2>
+        {action && <button>{action}<ChevronDown size={14} /></button>}
+      </header>
+      {children}
+    </article>
+  );
+}
+
+function PageTitle({ title, icon: Icon }) {
+  return (
+    <div className="page-title">
+      {Icon && <Icon size={24} />}
+      <h1>{title}</h1>
+    </div>
+  );
+}
+
+function DataPage({ user, title, icon, fn, columns }) {
+  const { loading, data, error } = useServer(user, fn);
+  if (loading) return <Loading title={title} />;
+  if (error) return <ErrorState title={title} error={error} />;
+  return (
+    <section className="page-stack">
+      <PageTitle title={title} icon={icon} />
+      <Panel title={title} action="Export">
+        <SimpleTable rows={data || []} columns={columns} />
+      </Panel>
+    </section>
+  );
+}
+
+function InventoryWorkspace({ user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const workspace = useServer(user, 'getInventoryWorkspaceData', [], [refreshKey]);
+  const [view, setView] = useState('overview');
+  const [metric, setMetric] = useState('inventoryValue');
+  const [query, setQuery] = useState('');
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+
+  if (workspace.loading) return <Loading title="Inventory" />;
+  if (workspace.error) return <ErrorState title="Inventory" error={workspace.error} />;
+
+  const data = workspace.data;
+  const tabs = ['overview', 'stock', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai'];
+  const metrics = ['inventoryValue', 'incomingStock', 'outgoingStock', 'damagedStock', 'expiredStock', 'warehouseStock', 'stockTurnover', 'stockCosts'];
+  const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+
+  return (
+    <section className="page-stack sales-workspace inventory-workspace">
+      <div className="sales-hero inventory-hero">
+        <div>
+          <span>Inventory Intelligence Platform</span>
+          <h1>Inventory Workspace</h1>
+          <p>Stock control, warehouse operations, movements, adjustments, transfers, audits, expiry, damaged stock, reports, forecasting, and AI reorder intelligence.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.overview.totalSkus}</strong><span>SKUs</span>
+          <strong>{currency(data.overview.totalStockValue)}</strong><span>Stock Value</span>
+          <strong>{data.overview.inventoryAccuracy}%</strong><span>Accuracy</span>
+        </div>
+      </div>
+
+      <div className="inline-actions">
+        <button onClick={() => setAdjustOpen(true)}><Plus size={16} /> Stock Adjustment</button>
+        <button onClick={() => setTransferOpen(true)}><Route size={16} /> Transfer Stock</button>
+        <button onClick={() => setView('alerts')}><AlertTriangle size={16} /> Alert Center</button>
+      </div>
+
+      <div className="sales-filter-bar">
+        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><Warehouse size={16} />{data.filters.warehouse}</button>
+        <button><Package size={16} />{data.filters.category}</button>
+        <button><CheckCircle2 size={16} />{data.filters.status}</button>
+        <button><CircleDollarSign size={16} />{data.filters.valuation}</button>
+      </div>
+
+      <div className="procurement-search">
+        <Search size={18} />
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search SKU, product, batch, warehouse, supplier, category, barcode, QR code, status..." />
+        {filteredSearch.length > 0 && <div>{filteredSearch.map(row => <span key={`${row.type}-${row.label}-${row.sub}`}><b>{row.type}</b>{row.label}<em>{row.sub}</em></span>)}</div>}
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'overview' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={Package} label="Total SKUs" value={data.overview.totalSkus} change={4.2} tone="blue" />
+            <KpiCard icon={CircleDollarSign} label="Stock Value" value={currency(data.overview.totalStockValue)} change={8.8} tone="green" />
+            <KpiCard icon={Warehouse} label="Available" value={data.overview.availableStock} change={3.4} tone="green" />
+            <KpiCard icon={Boxes} label="Reserved" value={data.overview.reservedStock} change={2.1} tone="blue" />
+            <KpiCard icon={AlertTriangle} label="Low Stock" value={data.overview.lowStock} change={-data.overview.lowStock} tone={data.overview.lowStock ? 'red' : 'green'} />
+            <KpiCard icon={CheckCircle2} label="Accuracy" value={`${data.overview.inventoryAccuracy}%`} change={2.5} tone="green" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-12 sales-main-chart" title="Main Inventory Graph" action={label(metric)}>
+              <SalesTrendChart data={data.trend} metric={metric} />
+            </Panel>
+            <Panel className="span-12" title="Switch Inventory Metric">
+              <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+            </Panel>
+            <Panel className="span-6" title="Low Stock Alert Center"><SimpleTable rows={data.reorderRules.filter(row => row.status === 'Reorder')} columns={['productName', 'currentStock', 'minimumStock', 'reorderPoint', 'recommendedOrderQty', 'preferredSupplier']} /></Panel>
+            <Panel className="span-6" title="Slow Moving Intelligence"><SimpleTable rows={data.slowMoving} columns={['productName', 'warehouseName', 'currentQuantity', 'inventoryValue', 'daysSinceLastMovement', 'recommendation']} /></Panel>
+          </div>
+        </>
+      )}
+
+      {view === 'stock' && <Panel title="Inventory Master List" action="Under 500ms Search"><SimpleTable rows={data.stockItems} columns={['sku', 'productName', 'category', 'warehouseName', 'quantityAvailable', 'quantityReserved', 'quantityIncoming', 'quantityOutgoing', 'reorderLevel', 'unitCost', 'sellingPrice', 'inventoryValue', 'status', 'lastMovementDate']} /></Panel>}
+      {view === 'warehouses' && <Panel title="Warehouse Management"><SimpleTable rows={data.warehouses} columns={['code', 'name', 'county', 'capacity', 'used', 'utilization', 'stockValue']} /></Panel>}
+      {view === 'movements' && <Panel title="Stock Movement Tracking"><SimpleTable rows={data.movements} columns={['productName', 'warehouseName', 'transactionType', 'quantity', 'unitCost', 'referenceType', 'createdBy']} /></Panel>}
+      {view === 'adjustments' && <Panel title="Stock Adjustments" action="Authorized"><SimpleTable rows={data.adjustments} columns={['productName', 'warehouseName', 'adjustmentType', 'quantity', 'reason', 'approvedBy', 'date']} /></Panel>}
+      {view === 'transfers' && <Panel title="Stock Transfers"><SimpleTable rows={data.transfers} columns={['transferNo', 'productName', 'fromWarehouse', 'toWarehouse', 'quantity', 'status', 'requestedBy']} /></Panel>}
+      {view === 'receiving' && <Panel title="Receiving from Procurement"><SimpleTable rows={data.receiving} columns={['grnNo', 'poNo', 'supplierName', 'warehouseName', 'acceptedQuantity', 'status']} /></Panel>}
+      {view === 'dispatch' && <Panel title="Dispatch to Sales"><SimpleTable rows={data.dispatch} columns={['deliveryNo', 'saleNo', 'customerName', 'driver', 'vehicle', 'status']} /></Panel>}
+      {view === 'audits' && <Panel title="Inventory Audit Intelligence"><SimpleTable rows={data.audits} columns={['auditNo', 'productName', 'warehouseName', 'systemQuantity', 'physicalQuantity', 'difference', 'reason', 'status']} /></Panel>}
+      {view === 'expiry' && <Panel title="Expiry Tracking"><SimpleTable rows={data.expiry} columns={['productName', 'batchNo', 'lotNo', 'warehouseName', 'quantity', 'expiryDate', 'daysRemaining', 'status']} /></Panel>}
+      {view === 'damaged' && <Panel title="Damaged Stock"><SimpleTable rows={data.damaged} columns={['productName', 'warehouseName', 'quantity', 'reason', 'date', 'reportedBy', 'status']} /></Panel>}
+      {view === 'alerts' && <InventoryAlerts data={data} user={user} onDone={() => setRefreshKey(x => x + 1)} />}
+      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Inventory" />}
+      {view === 'analytics' && <InventoryAnalytics data={data} metric={metric} setMetric={setMetric} />}
+      {view === 'forecasting' && <Panel title="Inventory Forecasting"><SimpleTable rows={data.forecasts} columns={['productName', 'futureDemand', 'stockoutRisk', 'reorderDate', 'seasonalDemand', 'warehouseCapacity']} /></Panel>}
+      {view === 'ai' && <ProcurementAi insights={data.ai} />}
+
+      {adjustOpen && <InventoryAdjustModal user={user} items={data.stockItems} onClose={() => setAdjustOpen(false)} onSaved={() => { setAdjustOpen(false); setRefreshKey(x => x + 1); setView('movements'); }} />}
+      {transferOpen && <InventoryTransferModal user={user} items={data.stockItems} warehouses={data.warehouses} onClose={() => setTransferOpen(false)} onSaved={() => { setTransferOpen(false); setRefreshKey(x => x + 1); setView('transfers'); }} />}
+    </section>
+  );
+}
+
+function InventoryAlerts({ data, user, onDone }) {
+  const [busy, setBusy] = useState('');
+  async function createPR(alert) {
+    const item = data.stockItems.find(row => row.productId === alert.productId);
+    if (!item) return;
+    setBusy(alert.id);
+    try {
+      await rpc('createInventoryPurchaseRequest', [user, item.id]);
+      onDone?.();
+    } finally {
+      setBusy('');
+    }
+  }
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-8" title="Unified Inventory Alert Center">
+        <div className="ai-insights">
+          {data.alerts.map(alert => (
+            <article key={alert.id}>
+              <strong>{alert.type}: {alert.productName}</strong>
+              <p>{alert.message}</p>
+              <span>{alert.warehouseName} - {alert.severity} - {alert.status}</span>
+              {['Low Stock', 'Critical Stock'].includes(alert.type) && <button className="mini-action" onClick={() => createPR(alert)} disabled={busy === alert.id}>{busy === alert.id ? 'Creating...' : 'Create Purchase Request'}</button>}
+            </article>
+          ))}
+        </div>
+      </Panel>
+      <Panel className="span-4" title="Dead Stock Center">
+        <SimpleTable rows={data.deadStock} columns={['productName', 'inventoryValue', 'storageCost', 'expiryRisk', 'warehouseSpaceUsed']} />
+      </Panel>
+    </div>
+  );
+}
+
+function InventoryReports({ reports, user, module = 'Inventory' }) {
+  const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module }));
+  async function exportReport(report, format) {
+    const file = await rpc('generateReportExport', [user, { ...filters, module, reportName: report.name }, format]);
+    downloadBase64File(file);
+  }
+  return (
+    <Panel title="Inventory Report Center" action="Generate">
+      <ReportDateControls filters={filters} setFilters={setFilters} />
+      <div className="sales-report-grid">
+        {reports.map(report => (
+          <article key={report.name}>
+            <strong>{report.name}</strong>
+            <span>{filters.startDate} to {filters.endDate} - {report.records} records</span>
+            <b>{currency(report.value)}</b>
+            <div>{report.exports.map(x => <button key={x} onClick={() => exportReport(report, x)}>{x}</button>)}</div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function InventoryAnalytics({ data, metric, setMetric }) {
+  const metrics = ['inventoryValue', 'incomingStock', 'outgoingStock', 'damagedStock', 'expiredStock', 'warehouseStock', 'stockTurnover', 'stockCosts'];
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12 sales-main-chart" title="Inventory Analytics">
+        <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+        <SalesTrendChart data={data.trend} metric={metric} />
+      </Panel>
+      <Panel className="span-6" title="Stock Intelligence"><SimpleTable rows={data.healthScores} columns={['productName', 'warehouseName', 'healthScore', 'classification']} /></Panel>
+      <Panel className="span-6" title="Cost Intelligence"><SimpleTable rows={data.costs} columns={['warehouseName', 'rent', 'utilities', 'labor', 'damageCosts', 'expiryLosses', 'totalCost']} /></Panel>
+      <Panel className="span-6" title="Fast Moving Stock"><SimpleTable rows={data.fastMoving} columns={['productName', 'warehouseName', 'movementCount', 'quantityAvailable', 'profitPotential']} /></Panel>
+      <Panel className="span-6" title="Document Center"><SimpleTable rows={data.documents} columns={['type', 'reference', 'productName', 'warehouseName', 'uploadedBy', 'date']} /></Panel>
+    </div>
+  );
+}
+
+function InventoryAdjustModal({ user, items, onClose, onSaved }) {
+  const [form, setForm] = useState({ inventoryId: items[0]?.id || '', quantity: 0, reason: 'Correction' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('adjustInventory', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Stock Adjustment</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Stock Item<select value={form.inventoryId} onChange={e => setForm({ ...form, inventoryId: e.target.value })}>{items.map(item => <option key={item.id} value={item.id}>{item.productName} - {item.warehouseName}</option>)}</select></label>
+        <div className="modal-grid">
+          <label>Quantity Change<input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
+          <label>Reason<select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>{['Count Variance', 'Damage', 'Loss', 'Theft', 'Correction', 'Expiry'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Post Adjustment'}</button>
+      </form>
+    </div>
+  );
+}
+
+function InventoryTransferModal({ user, items, warehouses, onClose, onSaved }) {
+  const [form, setForm] = useState({ inventoryId: items[0]?.id || '', quantity: 1, toWarehouse: warehouses[1]?.name || warehouses[0]?.name || '' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('transferInventory', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Transfer Stock</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Stock Item<select value={form.inventoryId} onChange={e => setForm({ ...form, inventoryId: e.target.value })}>{items.map(item => <option key={item.id} value={item.id}>{item.productName} - {item.warehouseName}</option>)}</select></label>
+        <div className="modal-grid">
+          <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
+          <label>To Warehouse<select value={form.toWarehouse} onChange={e => setForm({ ...form, toWarehouse: e.target.value })}>{warehouses.map(wh => <option key={wh.name}>{wh.name}</option>)}</select></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Transferring...' : 'Complete Transfer'}</button>
+      </form>
+    </div>
+  );
+}
+
+function ProcurementWorkspace({ user }) {
+  const workspace = useServer(user, 'getProcurementWorkspaceData');
+  const [view, setView] = useState('overview');
+  const [metric, setMetric] = useState('spend');
+  const [query, setQuery] = useState('');
+
+  if (workspace.loading) return <Loading title="Purchases" />;
+  if (workspace.error) return <ErrorState title="Purchases" error={workspace.error} />;
+
+  const data = workspace.data;
+  const tabs = ['overview', 'requests', 'orders', 'suppliers', 'deliveries', 'receiving', 'credit', 'payables', 'reports', 'analytics', 'ai'];
+  const metrics = ['spend', 'deliveries', 'leadTime', 'supplierPerformance', 'creditPurchases', 'outstandingBalances', 'purchaseOrders', 'receivedGoods'];
+  const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+
+  return (
+    <section className="page-stack sales-workspace procurement-workspace">
+      <div className="sales-hero procurement-hero">
+        <div>
+          <span>Procurement Operations Center</span>
+          <h1>Purchases Workspace</h1>
+          <p>Purchase requests, purchase orders, suppliers, deliveries, goods receiving, credit, accounts payable, reports, analytics, and AI in one connected workflow.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.overview.totalPOs}</strong><span>POs</span>
+          <strong>{currency(data.overview.procurementSpend)}</strong><span>Spend</span>
+          <strong>{currency(data.overview.outstandingSupplierBalances)}</strong><span>Payables</span>
+        </div>
+      </div>
+
+      <div className="sales-filter-bar">
+        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><Truck size={16} />{data.filters.supplier}</button>
+        <button><Warehouse size={16} />{data.filters.warehouse}</button>
+        <button><MapPin size={16} />{data.filters.county}</button>
+        <button><Package size={16} />{data.filters.product}</button>
+      </div>
+
+      <div className="procurement-search">
+        <Search size={18} />
+        <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search PO, supplier, product, delivery, invoice, GRN, warehouse, county..." />
+        {filteredSearch.length > 0 && <div>{filteredSearch.map(row => <span key={`${row.type}-${row.label}`}><b>{row.type}</b>{row.label}<em>{row.sub}</em></span>)}</div>}
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'overview' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={ClipboardCheck} label="Total POs" value={data.overview.totalPOs} change={8.2} tone="blue" />
+            <KpiCard icon={AlertTriangle} label="Pending POs" value={data.overview.pendingPOs} change={-2.1} tone="red" />
+            <KpiCard icon={CheckCircle2} label="Approved POs" value={data.overview.approvedPOs} change={12.4} tone="green" />
+            <KpiCard icon={Warehouse} label="Received POs" value={data.overview.receivedPOs} change={6.8} tone="green" />
+            <KpiCard icon={Truck} label="Overdue Deliveries" value={data.overview.overdueDeliveries} change={-4.2} tone="red" />
+            <KpiCard icon={CircleDollarSign} label="Supplier Balances" value={currency(data.overview.outstandingSupplierBalances)} change={3.1} tone="blue" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-12 sales-main-chart" title="Main Procurement Graph" action="Shared Filters">
+              <SalesTrendChart data={data.spendTrend} metric={metric} />
+            </Panel>
+            <Panel className="span-12" title="Switch Procurement Metric">
+              <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+              <ProcurementWorkflow steps={data.workflow} />
+            </Panel>
+          </div>
+        </>
+      )}
+
+      {view === 'requests' && <Panel title="Purchase Requests" action="Create Request"><SimpleTable rows={data.purchaseRequests} columns={['requestNo', 'department', 'requestedBy', 'productName', 'quantity', 'priority', 'approvalStatus']} /></Panel>}
+      {view === 'orders' && <Panel title="Purchase Orders" action="Generate PO"><SimpleTable rows={data.purchaseOrders} columns={['poNo', 'supplierName', 'department', 'warehouseName', 'total', 'status']} /></Panel>}
+      {view === 'suppliers' && <ProcurementSuppliers suppliers={data.suppliers} />}
+      {view === 'deliveries' && <ProcurementDeliveries deliveries={data.deliveries} counties={data.deliveryCounty} />}
+      {view === 'receiving' && <ProcurementReceiving receipts={data.goodsReceiving} items={data.goodsReceiptItems} />}
+      {view === 'credit' && <Panel title="Credit Purchases" action="Risk Scored"><SimpleTable rows={data.creditPurchases} columns={['supplierName', 'invoiceNo', 'invoiceAmount', 'outstandingBalance', 'dueDate', 'status', 'aiRiskScore']} /></Panel>}
+      {view === 'payables' && <ProcurementPayables rows={data.accountsPayable} buckets={data.agingBuckets} />}
+      {view === 'reports' && <ProcurementReports reports={data.reports} user={user} />}
+      {view === 'analytics' && <ProcurementAnalytics analytics={data.analytics} metric={metric} setMetric={setMetric} />}
+      {view === 'ai' && <ProcurementAi insights={data.ai} />}
+    </section>
+  );
+}
+
+function ProcurementWorkflow({ steps }) {
+  return (
+    <div className="pipeline-board procurement-flow">
+      {steps.map(step => (
+        <article key={step.step}>
+          <strong>{step.step}</strong>
+          <b>{step.count}</b>
+          <span>Live workflow records</span>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ProcurementSuppliers({ suppliers }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Supplier Scorecards" action="Performance">
+        <div className="scorecards procurement-scorecards">
+          {suppliers.map(row => (
+            <article key={row.id}>
+              <strong>{row.name}</strong>
+              <span>{row.contactPerson} - {row.category} - {row.paymentTerms}</span>
+              <div><em style={{ width: `${row.overallRating || 0}%` }} /></div>
+              <span>Delivery {row.deliveryAccuracy}% - Quality {row.qualityScore}% - Lead time {row.leadTime} days - Outstanding {currency(row.outstandingBalance)}</span>
+            </article>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function ProcurementDeliveries({ deliveries, counties }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-7" title="Kenya Delivery Intelligence" action="County Status">
+        <div className="county-grid procurement-county-grid">
+          {counties.map(row => (
+            <button key={row.county} className={row.status === 'Delivered' ? 'green' : row.status === 'Delayed' ? 'red' : row.status === 'In Transit' ? 'yellow' : ''}>
+              <strong>{row.county}</strong>
+              <span>{row.deliveries}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+      <Panel className="span-5" title="Late Delivery Alerts" action="ETA">
+        <VisitTimeline visits={deliveries.map(row => ({ id: row.id, county: row.county, customerName: row.supplierName, salesRepName: row.driver, visitStart: row.dispatchDate, visitEnd: row.eta, durationMinutes: row.status, outcome: row.notes }))} />
+      </Panel>
+      <Panel className="span-12" title="Procurement Deliveries">
+        <SimpleTable rows={deliveries} columns={['deliveryNo', 'poNo', 'supplierName', 'county', 'warehouseName', 'eta', 'status']} />
+      </Panel>
+    </div>
+  );
+}
+
+function ProcurementReceiving({ receipts, items }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Goods Received Notes" action="Inventory Updated">
+        <SimpleTable rows={receipts} columns={['grnNo', 'poNo', 'supplierName', 'warehouseName', 'receivedBy', 'acceptedQuantity', 'rejectedQuantity', 'status']} />
+      </Panel>
+      <Panel className="span-12" title="Receiving Variance">
+        <SimpleTable rows={items} columns={['productName', 'expectedQuantity', 'receivedQuantity', 'damagedQuantity', 'acceptedQuantity', 'inventoryUpdated']} />
+      </Panel>
+    </div>
+  );
+}
+
+function ProcurementPayables({ rows, buckets }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-4" title="Aging Buckets">
+        <div className="metric-stack">
+          {buckets.map(row => <div key={row.bucket}><span>{row.bucket} days</span><strong>{currency(row.amount)}</strong></div>)}
+        </div>
+      </Panel>
+      <Panel className="span-8" title="Accounts Payable">
+        <SimpleTable rows={rows} columns={['invoiceNo', 'supplierName', 'dueDate', 'invoiceAmount', 'paidAmount', 'outstandingBalance', 'paymentStatus']} />
+      </Panel>
+    </div>
+  );
+}
+
+function ProcurementReports({ reports, user }) {
+  const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module: 'Procurement' }));
+  async function exportReport(report, format) {
+    const file = await rpc('generateReportExport', [user, { ...filters, module: 'Procurement', reportName: report.name }, format]);
+    downloadBase64File(file);
+  }
+  return (
+    <Panel title="Procurement Report Center" action="Generate">
+      <ReportDateControls filters={filters} setFilters={setFilters} />
+      <div className="sales-report-grid">
+        {reports.map(report => (
+          <article key={report.name}>
+            <strong>{report.name}</strong>
+            <span>{report.dateRange} - {report.records} records</span>
+            <b>{currency(report.value)}</b>
+            <div>{report.exports.map(x => <button key={x} onClick={() => exportReport(report, x)}>{x}</button>)}</div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function ProcurementAnalytics({ analytics, metric, setMetric }) {
+  const metrics = ['spend', 'deliveries', 'leadTime', 'supplierPerformance', 'creditPurchases', 'outstandingBalances', 'purchaseOrders', 'receivedGoods'];
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12 sales-main-chart" title="Procurement Analytics Trend">
+        <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+        <SalesTrendChart data={analytics.spendTrend} metric={metric} />
+      </Panel>
+      <Panel className="span-6" title="Supplier Comparison"><SimpleTable rows={analytics.supplierComparison} columns={['supplier', 'spend', 'orders', 'leadTime', 'deliveryAccuracy', 'outstandingBalance']} /></Panel>
+      <Panel className="span-6" title="Delivery Performance"><SimpleTable rows={analytics.deliveryPerformance} columns={['deliveryNo', 'supplierName', 'county', 'status', 'performance']} /></Panel>
+      <Panel className="span-6" title="Credit Exposure"><SimpleTable rows={analytics.creditExposure} columns={['supplierName', 'outstandingBalance', 'creditLimit', 'aiRiskScore', 'status']} /></Panel>
+      <Panel className="span-6" title="Inventory Replenishment Forecast"><SimpleTable rows={analytics.forecasts} columns={['productName', 'recommendedOrderQty', 'reorderTiming', 'expectedCost', 'reason']} /></Panel>
+      <Panel className="span-6" title="Spend by Product"><SimpleTable rows={analytics.spendByProduct} columns={['product', 'spend', 'quantity']} /></Panel>
+      <Panel className="span-6" title="Spend by Department"><SimpleTable rows={analytics.spendByDepartment} columns={['department', 'spend', 'purchaseOrders']} /></Panel>
+    </div>
+  );
+}
+
+function ProcurementAi({ insights }) {
+  return (
+    <Panel title="AI Procurement Insights">
+      <div className="ai-insights">
+        {insights.map(item => (
+          <article key={item.title}>
+            <strong>{item.title}</strong>
+            <p>{item.detail}</p>
+            <span>Sources: {item.sources.join(', ')}</span>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function SalesModule({ user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const workspace = useServer(user, 'getSalesWorkspaceData', [], [refreshKey]);
+  const [view, setView] = useState('overview');
+  const [metric, setMetric] = useState('revenue');
+  const [selectedCounty, setSelectedCounty] = useState('Nairobi');
+  const [saleFormOpen, setSaleFormOpen] = useState(false);
+
+  useEffect(() => {
+    const open = () => setSaleFormOpen(true);
+    window.addEventListener('farmtrack:new-record', open);
+    return () => window.removeEventListener('farmtrack:new-record', open);
+  }, []);
+
+  if (workspace.loading) return <Loading title="Sales" />;
+  if (workspace.error) return <ErrorState title="Sales" error={workspace.error} />;
+
+  const data = workspace.data;
+  const territory = data.territory;
+  const county = territory.counties.find(c => c.name === selectedCounty) || territory.counties[0];
+  const tabs = ['overview', 'pipeline', 'quotes', 'orders', 'invoices', 'team', 'territory', 'reports', 'analytics', 'ai'];
+  const metrics = ['revenue', 'profit', 'customers', 'invoices', 'expenses', 'pipeline'];
+
+  return (
+    <section className="page-stack sales-workspace">
+      <div className="sales-hero">
+        <div>
+          <span>Revenue Operations Center</span>
+          <h1>Sales Workspace</h1>
+          <p>Pipeline, quotes, orders, invoices, team, territory, reports, and analytics operating as one shared workspace.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{currency(data.overview.revenue)}</strong><span>Revenue</span>
+          <strong>{data.overview.orders}</strong><span>Orders</span>
+          <strong>{currency(data.overview.pipeline)}</strong><span>Pipeline</span>
+        </div>
+      </div>
+      <div className="inline-actions">
+        <button onClick={() => setSaleFormOpen(true)}><Plus size={16} /> New Sales Order</button>
+        <button onClick={() => setView('orders')}><Truck size={16} /> Delivery Queue</button>
+        <button onClick={() => setView('reports')}><FileText size={16} /> Sales Reports</button>
+      </div>
+
+      <div className="sales-filter-bar">
+        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><MapPin size={16} />{data.filters.territory}</button>
+        <button><Users size={16} />{data.filters.salesRep}</button>
+        <button><Package size={16} />{data.filters.product}</button>
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'overview' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={CircleDollarSign} label="Revenue" value={currency(data.overview.revenue)} change={14.8} tone="green" />
+            <KpiCard icon={LineChart} label="Profit" value={currency(data.overview.profit)} change={9.2} tone="green" />
+            <KpiCard icon={ReceiptText} label="Orders" value={data.overview.orders} change={6.4} tone="blue" />
+            <KpiCard icon={FileText} label="Invoices" value={data.overview.invoices} change={4.1} tone="blue" />
+            <KpiCard icon={Target} label="Pipeline" value={currency(data.overview.pipeline)} change={11.3} tone="green" />
+            <KpiCard icon={BriefcaseBusiness} label="Expenses" value={currency(data.overview.expenses)} change={-3.2} tone="red" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-12 sales-main-chart" title="Revenue Operations Trend" action="Shared Filters">
+              <SalesTrendChart data={data.revenueTrend} metric={metric} />
+            </Panel>
+            <Panel className="span-12" title="Sales Team Comparison">
+              <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+              <SalesTeamTable rows={data.teamComparison} metric={metric} />
+            </Panel>
+          </div>
+        </>
+      )}
+
+      {view === 'pipeline' && <SalesPipeline stages={data.pipeline.stages} leads={data.pipeline.leads} />}
+      {view === 'quotes' && <QuotesWorkspace user={user} quotes={data.quotes} onDone={() => setRefreshKey(x => x + 1)} />}
+      {view === 'orders' && <SalesOrdersWorkspace user={user} orders={data.orders} deliveries={data.deliveries} onDone={() => setRefreshKey(x => x + 1)} />}
+      {view === 'invoices' && <Panel title="Invoices" action="Collections"><SimpleTable rows={data.invoices} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'liveStatus']} /></Panel>}
+      {view === 'team' && <TeamWorkspace data={data} metric={metric} />}
+      {view === 'territory' && <TerritoryWorkspace territory={territory} county={county} setSelectedCounty={setSelectedCounty} />}
+      {view === 'reports' && <SalesReports reports={data.reports} user={user} />}
+      {view === 'analytics' && <SalesAnalytics analytics={data.analytics} />}
+      {view === 'ai' && <SalesAi insights={data.ai} />}
+      {saleFormOpen && <NewSaleModal user={user} onClose={() => setSaleFormOpen(false)} onSaved={() => { setSaleFormOpen(false); setRefreshKey(x => x + 1); setView('orders'); }} />}
+    </section>
+  );
+}
+
+function SalesTrendChart({ data, metric }) {
+  return (
+    <div className="sales-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <ReLineChart data={data}>
+          <CartesianGrid stroke="#eef0f3" />
+          <XAxis dataKey="month" tick={{ fill: '#667085', fontSize: 12 }} />
+          <YAxis tick={{ fill: '#667085', fontSize: 12 }} />
+          <Tooltip formatter={value => typeof value === 'number' && value > 999 ? currency(value) : value} />
+          <Line type="monotone" dataKey={metric} stroke="#050505" strokeWidth={3} dot={{ r: 4 }} />
+        </ReLineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function TeamPerformanceChart({ data }) {
+  const colors = ['#050505', '#2563eb', '#17b451', '#ffac33', '#f64e4e'];
+  return (
+    <div className="sales-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <ReLineChart data={data}>
+          <CartesianGrid stroke="#eef0f3" />
+          <XAxis dataKey="month" tick={{ fill: '#667085', fontSize: 12 }} />
+          <YAxis tick={{ fill: '#667085', fontSize: 12 }} />
+          <Tooltip formatter={value => currency(value)} />
+          {['john', 'mary', 'peter', 'susan', 'david'].map((rep, index) => <Line key={rep} type="monotone" dataKey={rep} stroke={colors[index]} strokeWidth={2.5} />)}
+        </ReLineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SalesTeamTable({ rows, metric }) {
+  return (
+    <div className="team-comparison-table">
+      {rows.map(row => (
+        <article key={row.rep}>
+          <strong>{row.rep}</strong>
+          <span>Revenue {currency(row.revenue)} · Profit {currency(row.profit)} · {row.customers} customers</span>
+          <b>{['revenue', 'profit', 'expenses', 'pipeline'].includes(metric) ? currency(row[metric]) : row[metric]}</b>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function SalesPipeline({ stages, leads }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Pipeline Flow">
+        <div className="pipeline-board">
+          {stages.map(stage => (
+            <article key={stage.stage}>
+              <strong>{stage.stage}</strong>
+              <b>{stage.count}</b>
+              <span>{currency(stage.value)}</span>
+            </article>
+          ))}
+        </div>
+      </Panel>
+      <Panel className="span-12" title="Open Opportunities">
+        <SimpleTable rows={leads} columns={['name', 'company', 'stage', 'value', 'assignedTo']} />
+      </Panel>
+    </div>
+  );
+}
+
+function QuotesWorkspace({ user, quotes, onDone }) {
+  const [busy, setBusy] = useState('');
+  async function act(quote) {
+    setBusy(quote.id);
+    try {
+      if (quote.nextAction === 'Send Quote') await rpc('sendQuotation', [user, quote.id]);
+      else await rpc('convertQuotationToSale', [user, quote.id]);
+      onDone?.();
+    } finally {
+      setBusy('');
+    }
+  }
+  return (
+    <Panel title="Quotation Workflow" action="Create Quote">
+      <div className="quote-workflow">
+        {quotes.map(quote => (
+          <article key={quote.id}>
+            <div>
+              <strong>{quote.quoteNo}</strong>
+              <span>{quote.customerName} · {quote.stage} · {quote.conversionProbability}% probability</span>
+            </div>
+            <b>{currency(quote.total)}</b>
+            <button onClick={() => act(quote)} disabled={busy === quote.id}>{busy === quote.id ? 'Working...' : quote.nextAction}</button>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function SalesOrdersWorkspace({ user, orders, deliveries, onDone }) {
+  const [busy, setBusy] = useState('');
+  async function toggleDelivery(order, checked) {
+    const deliveryId = order.deliveryId || deliveries.find(row => row.saleId === order.id || row.saleNo === order.saleNo)?.id;
+    if (!deliveryId) return;
+    setBusy(deliveryId);
+    try {
+      await rpc('confirmSalesDelivery', [user, deliveryId, checked]);
+      onDone?.();
+    } finally {
+      setBusy('');
+    }
+  }
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Orders + Delivery Confirmation" action="Live Status">
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Sale No</th><th>Customer</th><th>Total</th><th>Delivery</th><th>Confirmed Delivered</th><th /></tr></thead>
+            <tbody>
+              {orders.slice(0, 10).map(order => (
+                <tr key={order.id}>
+                  <td>{order.saleNo}</td>
+                  <td>{order.customerName}</td>
+                  <td>{currency(order.total)}</td>
+                  <td>{formatCell(order.liveStatus, 'status')}</td>
+                  <td>
+                    <label className="check-cell">
+                      <input type="checkbox" checked={Boolean(order.deliveredConfirmed || order.liveStatus === 'Delivered')} disabled={busy === order.deliveryId || !order.deliveryId} onChange={e => toggleDelivery(order, e.target.checked)} />
+                      <span>{order.deliveryNo || 'No delivery'}</span>
+                    </label>
+                  </td>
+                  <td className="more">...</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+      <Panel className="span-12" title="Delivery Queue">
+        <SimpleTable rows={deliveries} columns={['deliveryNo', 'saleNo', 'customerName', 'driver', 'vehicle', 'status']} />
+      </Panel>
+    </div>
+  );
+}
+
+function NewSaleModal({ user, onClose, onSaved }) {
+  const lookup = useServer(user, 'getLookupData');
+  const [form, setForm] = useState({ customerId: '', productId: '', quantity: 1, paid: 0, paymentMethod: 'Credit', driver: '', vehicle: '' });
+  const [saving, setSaving] = useState(false);
+  if (lookup.loading) return <div className="modal-backdrop"><div className="modal-card"><Loader2 className="spin" /> Loading sale form...</div></div>;
+  if (lookup.error) return <div className="modal-backdrop"><div className="modal-card">Unable to load sale form: {lookup.error}</div></div>;
+  const products = lookup.data.products || [];
+  const customers = lookup.data.customers || [];
+  const selectedProduct = products.find(p => p.id === form.productId) || products[0] || {};
+  async function saveOrder(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('createSalesOrder', [user, { ...form, productId: form.productId || selectedProduct.id, unitPrice: selectedProduct.price }]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={saveOrder}>
+        <header><h2>New Sales Order</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Customer<select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} required><option value="">Select customer</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label>Product<select value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} required><option value="">Select product</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} - {currency(p.price)}</option>)}</select></label>
+        <div className="modal-grid">
+          <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
+          <label>Paid<input type="number" min="0" value={form.paid} onChange={e => setForm({ ...form, paid: e.target.value })} /></label>
+        </div>
+        <div className="modal-grid">
+          <label>Driver<input value={form.driver} onChange={e => setForm({ ...form, driver: e.target.value })} placeholder="Optional" /></label>
+          <label>Vehicle<input value={form.vehicle} onChange={e => setForm({ ...form, vehicle: e.target.value })} placeholder="Optional" /></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Creating...' : 'Create Order + Delivery'}</button>
+      </form>
+    </div>
+  );
+}
+
+function TeamWorkspace({ data, metric }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12 sales-main-chart" title="Sales Team Performance Over Time" action="Revenue">
+        <TeamPerformanceChart data={data.teamPerformance} />
+      </Panel>
+      <Panel className="span-12" title="Rep Comparison">
+        <SalesTeamTable rows={data.teamComparison} metric={metric} />
+      </Panel>
+    </div>
+  );
+}
+
+function TerritoryWorkspace({ territory, county, setSelectedCounty }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-7" title="Kenya Territory Coverage" action="47 Counties">
+        <CountyMap counties={territory.counties} selected={county.name} onSelect={setSelectedCounty} />
+      </Panel>
+      <Panel className="span-5" title={`${county.name} County Details`} action="Drawer">
+        <CountyProfile county={county} />
+      </Panel>
+      <Panel className="span-6" title="County Performance">
+        <SimpleTable rows={territory.counties} columns={['name', 'revenue', 'profit', 'visits', 'orders', 'quotations']} />
+      </Panel>
+      <Panel className="span-6" title="Visit Tracking & Routes">
+        <VisitTimeline visits={territory.visits} />
+      </Panel>
+    </div>
+  );
+}
+
+function SalesReports({ reports, user }) {
+  const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module: 'Sales' }));
+  async function exportReport(report, format) {
+    const file = await rpc('generateReportExport', [user, { ...filters, module: 'Sales', reportName: report.name }, format]);
+    downloadBase64File(file);
+  }
+  return (
+    <Panel title="Sales Reports" action="Generate">
+      <ReportDateControls filters={filters} setFilters={setFilters} />
+      <div className="sales-report-grid">
+        {reports.map(report => (
+          <article key={report.name}>
+            <strong>{report.name}</strong>
+            <span>{filters.startDate} to {filters.endDate} · {report.records} records</span>
+            <b>{currency(report.value)}</b>
+            <div>{report.exports.map(x => <button key={x} onClick={() => exportReport(report, x)}>{x}</button>)}</div>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function SalesAnalytics({ analytics }) {
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-6" title="Revenue Trend"><SalesTrendChart data={analytics.revenueTrend} metric="revenue" /></Panel>
+      <Panel className="span-6" title="Profit Trend"><SalesTrendChart data={analytics.revenueTrend} metric="profit" /></Panel>
+      <Panel className="span-6" title="Territory Comparison"><SimpleTable rows={analytics.territoryComparison} columns={['county', 'revenue', 'profit', 'visits']} /></Panel>
+      <Panel className="span-6" title="Product Comparison"><SimpleTable rows={analytics.productComparison} columns={['product', 'revenue', 'profit', 'quantity']} /></Panel>
+      <Panel className="span-6" title="Customer Growth"><SalesTrendChart data={analytics.customerGrowth} metric="customers" /></Panel>
+      <Panel className="span-6" title="Quotation Conversion"><SalesTrendChart data={analytics.quotationConversion} metric="conversion" /></Panel>
+      <Panel className="span-6" title="Pipeline Value"><SalesTrendChart data={analytics.pipelineValue} metric="pipeline" /></Panel>
+      <Panel className="span-6" title="Forecast"><SalesTrendChart data={analytics.forecast} metric="forecast" /></Panel>
+    </div>
+  );
+}
+
+function SalesAi({ insights }) {
+  return (
+    <Panel title="Sales AI">
+      <div className="ai-insights">
+        {insights.map(item => (
+          <article key={item.title}>
+            <strong>{item.title}</strong>
+            <p>{item.detail}</p>
+            <span>Sources: sales workspace, orders, invoices, territory, pipeline</span>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function CountyMap({ counties, selected, onSelect }) {
+  return (
+    <div className="kenya-map">
+      <div className="map-legend">
+        <span className="green">Actively covered</span>
+        <span className="yellow">Low activity</span>
+        <span className="red">Neglected territory</span>
+      </div>
+      <div className="county-grid">
+        {counties.map(county => (
+          <button key={county.name} className={`${county.color} ${selected === county.name ? 'selected' : ''}`} onClick={() => onSelect(county.name)} title={`${county.name}: score ${county.score}`}>
+            <strong>{county.name}</strong>
+            <span>{county.score}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CountyProfile({ county }) {
+  const stats = [
+    ['Revenue', currency(county.revenue)],
+    ['Customers', county.customers],
+    ['Active Customers', county.activeCustomers],
+    ['Dormant Customers', county.dormantCustomers],
+    ['Prospects', county.prospects],
+    ['Visits', county.visits],
+    ['Orders', county.orders],
+    ['Quotations', county.quotations],
+    ['Pipeline', currency(county.pipeline)],
+    ['Profit', currency(county.profit)]
+  ];
+  return (
+    <div className="county-profile">
+      <div className={`county-score ${county.color}`}>
+        <strong>{county.score}</strong>
+        <span>Performance score</span>
+      </div>
+      <div className="metric-stack compact">
+        {stats.map(([labelText, value]) => <div key={labelText}><span>{labelText}</span><strong>{value}</strong></div>)}
+      </div>
+      <div className="county-products">
+        <span>Top Products</span>
+        <p>{county.topProducts.filter(Boolean).join(', ') || 'No product movement yet'}</p>
+        <span>Sales Rep</span>
+        <p>{county.salesRep}</p>
+      </div>
+    </div>
+  );
+}
+
+function RepComparison({ reps }) {
+  return (
+    <div className="rep-comparison">
+      {reps.map(rep => (
+        <article key={rep.salesRepId}>
+          <div>
+            <strong>{rep.name}</strong>
+            <span>{rep.countiesCovered} counties · {rep.visits} visits · {rep.orders} orders</span>
+          </div>
+          <b>{currency(rep.revenue)}</b>
+          <em>ROI {rep.roi}x</em>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function VisitTimeline({ visits }) {
+  return (
+    <div className="visit-timeline">
+      {visits.map(visit => (
+        <article key={visit.id}>
+          <MapPin size={18} />
+          <div>
+            <strong>{visit.county} · {visit.customerName}</strong>
+            <span>{visit.salesRepName} checked in {visit.visitStart}, out {visit.visitEnd} · {visit.durationMinutes} min</span>
+            <em>{visit.outcome}</em>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function OpportunityList({ opportunities }) {
+  return (
+    <div className="opportunity-list">
+      {opportunities.map(item => (
+        <article key={item.county}>
+          <div>
+            <strong>{item.county}</strong>
+            <span>{item.currentCustomers} current / {item.potentialCustomers} potential customers</span>
+          </div>
+          <b>{item.coverage}% coverage</b>
+          <em>{item.recommendation}</em>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function RouteList({ routes }) {
+  return (
+    <div className="route-list">
+      {routes.map(route => (
+        <article key={route.id}>
+          <Navigation size={18} />
+          <div>
+            <strong>{route.salesRepName}</strong>
+            <span>{route.counties.join(' -> ')}</span>
+          </div>
+          <b>{route.distanceKm} km</b>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function Manufacturing({ user }) {
+  const [view, setView] = useState('dashboard');
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getManufacturingWorkspaceData', [], [refreshKey]);
+  if (loading) return <Loading title="Manufacturing" />;
+  if (error) return <ErrorState title="Manufacturing" error={error} />;
+  const refresh = () => setRefreshKey(x => x + 1);
+  const tabs = ['dashboard', 'materials', 'batches', 'formulas', 'orders', 'consumption', 'traceability', 'quality', 'capacity', 'calendar', 'downtime', 'documents', 'recalls', 'reports', 'ai'];
+  async function startOrder(id) {
+    await rpc('startProductionOrder', [user, id]);
+    refresh();
+  }
+  async function completeOrder(order) {
+    await rpc('completeProductionJob', [user, order.id, order.plannedQty, 0, 0]);
+    refresh();
+    setView('traceability');
+  }
+  return (
+    <section className="page-stack manufacturing-workspace">
+      <div className="sales-hero manufacturing-hero">
+        <div>
+          <span>Manufacturing v1 · UOM + Batch Traceability</span>
+          <h1>Production Ecosystem</h1>
+          <p>Track every kilogram, gram, litre, batch, formula, production order, quality check, finished good, inventory movement, and finance posting.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.overview.openOrders}</strong><span>Open Orders</span>
+          <strong>{data.overview.manufacturingScore}%</strong><span>Health</span>
+          <strong>{data.overview.actualOutput}</strong><span>Produced</span>
+        </div>
+      </div>
+
+      <div className="inline-actions">
+        <button onClick={() => setReceiveOpen(true)}><Plus size={16} /> Receive Raw Material</button>
+        <button onClick={() => setOrderOpen(true)}><Factory size={16} /> New Production Order</button>
+        <button onClick={() => setView('traceability')}><Route size={16} /> Traceability</button>
+        <button onClick={() => setView('reports')}><FileText size={16} /> Manufacturing Reports</button>
+      </div>
+
+      <div className="manufacturing-conversion">
+        <article><span>Automatic UOM Conversion</span><strong>{data.conversionExample.input} = {Number(data.conversionExample.storedBase).toLocaleString()} {data.conversionExample.baseUnit}</strong><em>Consumes {data.conversionExample.consumed}; remaining {Number(data.conversionExample.remainingBase).toLocaleString()} {data.conversionExample.baseUnit}</em></article>
+        <article><span>Material Locking</span><strong>{Number(data.overview.reservedMaterial).toLocaleString()} base units reserved</strong><em>Production start reserves material before completion can consume it.</em></article>
+        <article><span>Consumed History</span><strong>{Number(data.overview.consumedMaterial).toLocaleString()} base units consumed</strong><em>Consumption rows are immutable traceability records.</em></article>
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'dashboard' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={Warehouse} label="Raw Available" value={Number(data.overview.rawMaterialAvailable).toLocaleString()} change={8} tone="green" />
+            <KpiCard icon={ClipboardCheck} label="Reserved" value={Number(data.overview.reservedMaterial).toLocaleString()} change={4} tone="blue" />
+            <KpiCard icon={Factory} label="Planned Output" value={Number(data.overview.plannedOutput).toLocaleString()} change={6} tone="blue" />
+            <KpiCard icon={CheckCircle2} label="Actual Output" value={Number(data.overview.actualOutput).toLocaleString()} change={9} tone="green" />
+            <KpiCard icon={AlertTriangle} label="Waste" value={Number(data.overview.waste).toLocaleString()} change={-2} tone="red" />
+            <KpiCard icon={Gauge} label="Mfg Score" value={`${data.overview.manufacturingScore}%`} change={5} tone="green" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-6" title="Manufacturing Health Score"><SimpleTable rows={data.health} columns={['material', 'availability', 'quality', 'demand', 'score', 'status']} /></Panel>
+            <Panel className="span-6" title="Production Orders"><ProductionOrderList orders={data.orders} onStart={startOrder} onComplete={completeOrder} /></Panel>
+            <Panel className="span-6" title="Raw Material Storage"><SimpleTable rows={data.rawMaterials} columns={['materialCode', 'materialName', 'unitOfMeasure', 'currentQuantity', 'availableQuantity', 'reservedQuantity', 'consumedQuantity', 'warehouse']} /></Panel>
+            <Panel className="span-6" title="Capacity Planning"><SimpleTable rows={data.capacity} columns={['resource', 'type', 'dailyCapacity', 'scheduled', 'available', 'unit', 'status']} /></Panel>
+          </div>
+        </>
+      )}
+      {view === 'materials' && <Panel title="Raw Material Storage Records"><SimpleTable rows={data.rawMaterials} columns={['materialCode', 'materialName', 'category', 'unitOfMeasure', 'currentQuantity', 'availableQuantity', 'reservedQuantity', 'consumedQuantity', 'supplier', 'costPerUnit', 'warehouse', 'storageLocation', 'batchNumber', 'expiryDate', 'status']} /></Panel>}
+      {view === 'batches' && <Panel title="Raw Material Batch Lots"><SimpleTable rows={data.rawMaterialBatches} columns={['batchNumber', 'materialName', 'supplier', 'quantity', 'availableQuantity', 'reservedQuantity', 'unit', 'cost', 'receivedDate', 'expiryDate', 'warehouse', 'storageLocation', 'status']} /></Panel>}
+      {view === 'formulas' && <div className="dashboard-grid"><Panel className="span-5" title="Product Formulas"><SimpleTable rows={data.formulas} columns={['productName', 'formulaName', 'activeVersion', 'outputQuantity', 'outputUnit', 'status']} /></Panel><Panel className="span-7" title="Formula Version Materials"><SimpleTable rows={data.formulaVersions} columns={['formulaId', 'version', 'materialName', 'quantity', 'unit', 'effectiveFrom', 'status']} /></Panel></div>}
+      {view === 'orders' && <Panel title="Production Orders"><ProductionOrderList orders={data.orders} onStart={startOrder} onComplete={completeOrder} /></Panel>}
+      {view === 'consumption' && <Panel title="Raw Material Consumption History"><SimpleTable rows={data.consumption} columns={['productionOrder', 'materialName', 'batchNumber', 'quantityConsumed', 'unit', 'operator', 'date', 'costConsumed', 'immutable']} /></Panel>}
+      {view === 'traceability' && <div className="dashboard-grid"><Panel className="span-6" title="Batch Material Traceability"><SimpleTable rows={data.traceability} columns={['productionOrder', 'material', 'batchUsed', 'quantityConsumed', 'unit', 'operator', 'date', 'costConsumed']} /></Panel><Panel className="span-6" title="Production Storage History"><SimpleTable rows={data.storageHistory} columns={['batchNo', 'productName', 'quantityProduced', 'dateProduced', 'costProduced', 'operator', 'qualityCheck', 'packagingEvent', 'inventoryTransfer', 'saleStatus']} /></Panel></div>}
+      {view === 'quality' && <Panel title="Quality Checks"><SimpleTable rows={data.qualityChecks} columns={['batchNo', 'productName', 'parameter', 'result', 'inspector', 'date', 'status']} /></Panel>}
+      {view === 'capacity' && <Panel title="Machine, Employee, Warehouse Capacity"><SimpleTable rows={data.capacity} columns={['resource', 'type', 'dailyCapacity', 'scheduled', 'available', 'unit', 'status']} /></Panel>}
+      {view === 'calendar' && <Panel title="Production Calendar"><SimpleTable rows={data.calendar} columns={['period', 'plannedOrders', 'plannedOutput', 'status']} /></Panel>}
+      {view === 'downtime' && <Panel title="Production Downtime"><SimpleTable rows={data.downtime} columns={['orderNo', 'reason', 'minutes', 'operator', 'date', 'impact']} /></Panel>}
+      {view === 'documents' && <Panel title="Manufacturing Documents"><SimpleTable rows={data.documents} columns={['title', 'type', 'productName', 'version', 'status']} /></Panel>}
+      {view === 'recalls' && <Panel title="Batch Recall System"><SimpleTable rows={data.recalls} columns={['recallNo', 'materialBatch', 'affectedBatches', 'reason', 'status']} /></Panel>}
+      {view === 'reports' && <Panel title="Manufacturing Reports"><SimpleTable rows={data.reports} columns={['name', 'rows', 'status']} /></Panel>}
+      {view === 'ai' && <ProcurementAi insights={data.ai} />}
+      {receiveOpen && <RawMaterialModal user={user} materials={data.rawMaterials} uoms={data.uoms} onClose={() => setReceiveOpen(false)} onSaved={() => { setReceiveOpen(false); refresh(); setView('batches'); }} />}
+      {orderOpen && <ProductionOrderModal user={user} formulas={data.formulas} onClose={() => setOrderOpen(false)} onSaved={() => { setOrderOpen(false); refresh(); setView('orders'); }} />}
+    </section>
+  );
+}
+
+function ProductionOrderList({ orders, onStart, onComplete }) {
+  return (
+    <div className="production-order-list">
+      {orders.map(order => (
+        <article key={order.id}>
+          <div><strong>{order.orderNo} · {order.productName}</strong><span>{order.plannedQty} {order.outputUnit} · {order.formulaVersion} · {order.operator}</span></div>
+          <b>{order.status}</b>
+          <div>{order.status === 'Pending' && <button onClick={() => onStart(order.id)}>Start</button>}{order.status !== 'Completed' && <button onClick={() => onComplete(order)}>Complete</button>}</div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function RawMaterialModal({ user, materials, uoms, onClose, onSaved }) {
+  const [form, setForm] = useState({ materialName: materials[0]?.materialName || 'Maize Bran', materialCode: materials[0]?.materialCode || 'RM-NEW', category: 'Raw Material', quantity: 500, unit: 'KG', costPerUnit: 1.8, supplier: 'Unga Millers Ltd', warehouse: 'Raw Materials Store', storageLocation: 'A1', expiryDate: '2027-01-01' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('receiveRawMaterial', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Receive Raw Material</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Material Name<input value={form.materialName} onChange={e => setForm({ ...form, materialName: e.target.value })} /></label>
+          <label>Material Code<input value={form.materialCode} onChange={e => setForm({ ...form, materialCode: e.target.value })} /></label>
+          <label>Quantity<input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
+          <label>Unit<select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>{uoms.map(u => <option key={u.code} value={u.code}>{u.name}</option>)}</select></label>
+          <label>Cost Per Base Unit<input type="number" value={form.costPerUnit} onChange={e => setForm({ ...form, costPerUnit: e.target.value })} /></label>
+          <label>Supplier<input value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} /></label>
+          <label>Warehouse<input value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} /></label>
+          <label>Expiry Date<input type="date" value={form.expiryDate} onChange={e => setForm({ ...form, expiryDate: e.target.value })} /></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Receiving...' : 'Receive + Auto Convert'}</button>
+      </form>
+    </div>
+  );
+}
+
+function ProductionOrderModal({ user, formulas, onClose, onSaved }) {
+  const first = formulas[0] || {};
+  const [form, setForm] = useState({ formulaId: first.id, productName: first.productName || '', plannedQty: 1, outputUnit: first.outputUnit || 'BAG', operator: 'Grace Production', startDate: new Date().toISOString().slice(0, 10) });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('saveProductionJob', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>New Production Order</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Formula<select value={form.formulaId} onChange={e => { const formula = formulas.find(x => x.id === e.target.value) || first; setForm({ ...form, formulaId: formula.id, productName: formula.productName, outputUnit: formula.outputUnit }); }}>{formulas.map(f => <option key={f.id} value={f.id}>{f.productName} · {f.activeVersion}</option>)}</select></label>
+        <div className="modal-grid">
+          <label>Product<input value={form.productName} onChange={e => setForm({ ...form, productName: e.target.value })} /></label>
+          <label>Planned Qty<input type="number" value={form.plannedQty} onChange={e => setForm({ ...form, plannedQty: e.target.value })} /></label>
+          <label>Output Unit<input value={form.outputUnit} onChange={e => setForm({ ...form, outputUnit: e.target.value })} /></label>
+          <label>Operator<input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} /></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Creating...' : 'Create Production Order'}</button>
+      </form>
+    </div>
+  );
+}
+
+function Finance({ user }) {
+  const [view, setView] = useState('dashboard');
+  const [metric, setMetric] = useState('profit');
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [], [refreshKey]);
+  if (loading) return <Loading title="Finance" />;
+  if (error) return <ErrorState title="Finance" error={error} />;
+  const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai'];
+  const metrics = ['revenue', 'expenses', 'profit', 'cash', 'ar', 'ap'];
+  const refresh = () => setRefreshKey(x => x + 1);
+  return (
+    <section className="page-stack sales-workspace finance-workspace">
+      <div className="sales-hero finance-hero">
+        <div>
+          <span>Finance v2 · Fully Posted Backend</span>
+          <h1>Finance Operating Center</h1>
+          <p>Sales, procurement, inventory, payments, expenses, tax, payroll, assets, budgets, and manual journals now flow into one balanced, auditable financial engine.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{currency(data.overview.cashPosition)}</strong><span>Cash</span>
+          <strong>{currency(data.overview.netProfit)}</strong><span>Net Profit</span>
+          <strong>{data.integrity.unbalanced}</strong><span>Unbalanced</span>
+        </div>
+      </div>
+
+      <div className="inline-actions">
+        <button onClick={() => setJournalOpen(true)}><Plus size={16} /> Manual Journal</button>
+        <button onClick={() => setExpenseOpen(true)}><ReceiptText size={16} /> Record Expense</button>
+        <button onClick={() => setPaymentOpen(true)}><CircleDollarSign size={16} /> Receive Payment</button>
+        <button onClick={() => setView('reports')}><FileText size={16} /> Financial Reports</button>
+        <button onClick={() => setView('audit')}><CheckCircle2 size={16} /> Audit Center</button>
+      </div>
+
+      <FinanceHealthStrip data={data} />
+
+      <div className="sales-filter-bar">
+        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><CircleDollarSign size={16} />{data.filters.currency}</button>
+        <button><BriefcaseBusiness size={16} />{data.filters.entity}</button>
+        <button><CheckCircle2 size={16} />{data.integrity.journals} Journals / {data.integrity.lines} Lines</button>
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'dashboard' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={CircleDollarSign} label="Total Revenue" value={currency(data.overview.revenue)} change={12} tone="green" />
+            <KpiCard icon={BriefcaseBusiness} label="Total Expenses" value={currency(data.overview.expenses)} change={-4} tone="red" />
+            <KpiCard icon={LineChart} label="Net Profit" value={currency(data.overview.netProfit)} change={9} tone="green" />
+            <KpiCard icon={Gauge} label="Health Score" value={`${data.overview.financialHealthScore}%`} change={5} tone="blue" />
+            <KpiCard icon={ReceiptText} label="Receivables" value={currency(data.overview.accountsReceivable)} change={-2} tone="blue" />
+            <KpiCard icon={ClipboardCheck} label="Payables" value={currency(data.overview.accountsPayable)} change={3} tone="red" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-12 sales-main-chart" title="Financial Storyline" action={label(metric)}>
+              <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
+              <SalesTrendChart data={data.trend} metric={metric} />
+            </Panel>
+            <Panel className="span-4" title="Quick Posting Center"><FinanceQuickActions onJournal={() => setJournalOpen(true)} onExpense={() => setExpenseOpen(true)} onPayment={() => setPaymentOpen(true)} /></Panel>
+            <Panel className="span-4" title="Trial Balance Check"><FinanceTrialBalance journalLines={data.journalLines} /></Panel>
+            <Panel className="span-4" title="Controls & Exceptions"><FinanceControls data={data} /></Panel>
+            <Panel className="span-6" title="Department Integration Flow"><SimpleTable rows={data.sourceFlows} columns={['module', 'records', 'journals', 'status']} /></Panel>
+            <Panel className="span-6" title="Bank & Cash Position"><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'currency', 'openingBalance', 'balance', 'status']} /></Panel>
+          </div>
+        </>
+      )}
+      {view === 'ledger' && <Panel title="General Ledger"><SimpleTable rows={data.ledger} columns={['date', 'accountCode', 'accountName', 'debit', 'credit', 'sourceModule', 'reference']} /></Panel>}
+      {view === 'accounts' && <Panel title="Chart of Accounts"><SimpleTable rows={data.accounts} columns={['code', 'name', 'type', 'parent', 'status']} /></Panel>}
+      {view === 'journals' && <Panel title="Journal Entries"><SimpleTable rows={data.journals} columns={['journalNo', 'date', 'description', 'sourceModule', 'reference', 'totalDebit', 'totalCredit', 'approvalStatus']} /></Panel>}
+      {view === 'receivables' && <Panel title="Accounts Receivable"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'agingBucket', 'risk', 'status']} /></Panel>}
+      {view === 'payables' && <Panel title="Accounts Payable"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'invoiceAmount', 'paidAmount', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>}
+      {view === 'banking' && <Panel title="Bank Transactions"><SimpleTable rows={data.bankTransactions} columns={['date', 'accountName', 'reference', 'description', 'deposit', 'withdrawal', 'reconciled']} /></Panel>}
+      {view === 'cash' && <Panel title="Cash Management"><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'openingBalance', 'balance', 'status']} /></Panel>}
+      {view === 'expenses' && <Panel title="Expense Center"><SimpleTable rows={data.expenses} columns={['expNo', 'category', 'date', 'description', 'amount', 'paymentMethod', 'status']} /></Panel>}
+      {view === 'revenue' && <Panel title="Revenue Center"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'status']} /></Panel>}
+      {view === 'payroll' && <Panel title="Payroll Management"><SimpleTable rows={data.payroll} columns={['employeeNo', 'name', 'department', 'basicSalary', 'allowances', 'deductions', 'netPay', 'status']} /></Panel>}
+      {view === 'taxes' && <Panel title="Kenyan Tax Engine"><SimpleTable rows={data.taxes} columns={['taxType', 'liability', 'period', 'status']} /></Panel>}
+      {view === 'assets' && <Panel title="Fixed Assets"><SimpleTable rows={data.assets} columns={['assetName', 'category', 'location', 'purchaseCost', 'accumulatedDepreciation', 'currentValue', 'status']} /></Panel>}
+      {view === 'budgeting' && <Panel title="Budgeting & Variance"><SimpleTable rows={data.budgets} columns={['department', 'budget', 'actual', 'variance', 'forecast', 'status']} /></Panel>}
+      {view === 'reconciliation' && <FinanceReconciliation data={data} />}
+      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Financial" />}
+      {view === 'audit' && <Panel title="Immutable Audit Center"><SimpleTable rows={data.audit} columns={['user', 'date', 'module', 'action', 'reference', 'newValue', 'approval', 'immutable']} /></Panel>}
+      {view === 'costCenters' && <Panel title="Cost Centers"><SimpleTable rows={data.costCenters} columns={['code', 'department', 'manager', 'revenue', 'cost', 'profitability']} /></Panel>}
+      {view === 'forecasting' && <Panel title="Financial Forecasting"><SimpleTable rows={data.forecasts} columns={['metric', 'current', 'forecast30', 'confidence']} /></Panel>}
+      {view === 'ai' && <ProcurementAi insights={data.ai} />}
+      {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
+      {expenseOpen && <FinanceExpenseModal user={user} onClose={() => setExpenseOpen(false)} onSaved={() => { setExpenseOpen(false); refresh(); setView('expenses'); }} />}
+      {paymentOpen && <FinancePaymentModal user={user} receivables={data.receivables} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); refresh(); setView('receivables'); }} />}
+    </section>
+  );
+}
+
+function FinanceHealthStrip({ data }) {
+  const debit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.debit || 0), 0);
+  const credit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.credit || 0), 0);
+  const checks = [
+    ['Journal Balance', data.integrity.unbalanced === 0 ? 'Balanced' : `${data.integrity.unbalanced} exceptions`, data.integrity.unbalanced === 0],
+    ['Audit Lock', data.integrity.immutable ? 'Immutable' : 'Review needed', data.integrity.immutable],
+    ['Trial Balance', Math.round(debit) === Math.round(credit) ? 'Debit = Credit' : 'Out of balance', Math.round(debit) === Math.round(credit)],
+    ['Posting Coverage', `${data.sourceFlows.filter(x => x.journals > 0).length}/${data.sourceFlows.length} modules`, data.sourceFlows.filter(x => x.journals > 0).length >= 5]
+  ];
+  return (
+    <div className="finance-health-strip">
+      {checks.map(([name, value, ok]) => (
+        <article key={name} className={ok ? 'ok' : 'warn'}>
+          <CheckCircle2 size={17} />
+          <span>{name}</span>
+          <strong>{value}</strong>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function FinanceQuickActions({ onJournal, onExpense, onPayment }) {
+  return (
+    <div className="finance-action-stack">
+      <button onClick={onJournal}><Plus size={17} /><span>Post balanced journal</span><em>Debit and credit in one controlled entry</em></button>
+      <button onClick={onExpense}><ReceiptText size={17} /><span>Record expense</span><em>Expense entry plus finance posting</em></button>
+      <button onClick={onPayment}><CircleDollarSign size={17} /><span>Receive customer payment</span><em>Updates AR and bank/cash flow</em></button>
+    </div>
+  );
+}
+
+function FinanceTrialBalance({ journalLines = [] }) {
+  const debit = journalLines.reduce((sum, row) => sum + Number(row.debit || 0), 0);
+  const credit = journalLines.reduce((sum, row) => sum + Number(row.credit || 0), 0);
+  const diff = Math.round(debit - credit);
+  return (
+    <div className="finance-trial-card">
+      <div><span>Total Debit</span><strong>{currency(debit)}</strong></div>
+      <div><span>Total Credit</span><strong>{currency(credit)}</strong></div>
+      <div className={diff === 0 ? 'balanced' : 'unbalanced'}><span>Difference</span><strong>{currency(diff)}</strong></div>
+    </div>
+  );
+}
+
+function FinanceControls({ data }) {
+  const overdueAr = (data.receivables || []).filter(x => x.risk === 'High' || x.status === 'Overdue').length;
+  const overdueAp = (data.payables || []).filter(x => x.risk === 'High' || x.paymentStatus === 'Overdue').length;
+  const taxDue = (data.taxes || []).filter(x => x.status !== 'Filed' && x.status !== 'Paid').length;
+  return (
+    <div className="finance-control-list">
+      <article><span>Receivable risk</span><strong>{overdueAr}</strong><em>High-risk customer balances</em></article>
+      <article><span>Payable risk</span><strong>{overdueAp}</strong><em>Supplier balances needing attention</em></article>
+      <article><span>Tax queue</span><strong>{taxDue}</strong><em>Open tax records to file/pay</em></article>
+    </div>
+  );
+}
+
+function FinanceReconciliation({ data }) {
+  const rows = (data.bankTransactions || []).map(row => ({
+    ...row,
+    expectedLedger: Number(row.deposit || 0) || Number(row.withdrawal || 0),
+    matchStatus: row.reconciled ? 'Matched' : 'Open'
+  }));
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-4" title="Bank Reconciliation Status">
+        <div className="finance-control-list">
+          <article><span>Bank Accounts</span><strong>{data.bankAccounts.length}</strong><em>Active cash locations</em></article>
+          <article><span>Transactions</span><strong>{data.bankTransactions.length}</strong><em>Bank movements imported/generated</em></article>
+          <article><span>Open Items</span><strong>{rows.filter(x => x.matchStatus === 'Open').length}</strong><em>Need matching or review</em></article>
+        </div>
+      </Panel>
+      <Panel className="span-8" title="Reconciliation Workbench">
+        <SimpleTable rows={rows} columns={['date', 'accountName', 'reference', 'description', 'deposit', 'withdrawal', 'matchStatus']} />
+      </Panel>
+    </div>
+  );
+}
+
+function FinanceJournalModal({ user, accounts, onClose, onSaved }) {
+  const expense = accounts.find(a => a.type === 'Expense')?.id || accounts[0]?.id;
+  const bank = accounts.find(a => a.name === 'KCB Bank')?.id || accounts[1]?.id;
+  const [form, setForm] = useState({ amount: 0, description: 'Manual adjustment journal', reference: 'MANUAL', debitAccountId: expense, creditAccountId: bank, date: new Date().toISOString().slice(0, 10) });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('postManualJournal', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Manual Journal</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+          <label>Amount<input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
+          <label>Debit Account<select value={form.debitAccountId} onChange={e => setForm({ ...form, debitAccountId: e.target.value })}>{accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></label>
+          <label>Credit Account<select value={form.creditAccountId} onChange={e => setForm({ ...form, creditAccountId: e.target.value })}>{accounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></label>
+        </div>
+        <label>Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
+        <label>Reference<input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} /></label>
+        <button className="primary-action" disabled={saving}>{saving ? 'Posting...' : 'Post Balanced Journal'}</button>
+      </form>
+    </div>
+  );
+}
+
+function FinanceExpenseModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({ category: 'Operations', date: new Date().toISOString().slice(0, 10), description: 'Operational expense', amount: 0, paymentMethod: 'Bank' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('recordFinanceExpense', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Record Finance Expense</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+          <label>Amount<input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></label>
+          <label>Category<input value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} /></label>
+          <label>Payment Method<select value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>{['Bank', 'Cash', 'M-Pesa'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <label>Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
+        <button className="primary-action" disabled={saving}>{saving ? 'Posting...' : 'Record Expense + Journal'}</button>
+      </form>
+    </div>
+  );
+}
+
+function FinancePaymentModal({ user, receivables, onClose, onSaved }) {
+  const first = receivables.find(x => Number(x.balance || 0) > 0) || receivables[0];
+  const [form, setForm] = useState({ invoiceId: first?.invoiceId || first?.id || '', amount: first?.balance || 0, method: 'Bank' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('recordCustomerPayment', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Receive Customer Payment</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Invoice<select value={form.invoiceId} onChange={e => {
+          const inv = receivables.find(x => (x.invoiceId || x.id) === e.target.value);
+          setForm({ ...form, invoiceId: e.target.value, amount: inv?.balance || form.amount });
+        }}>{receivables.map(x => <option key={x.invoiceId || x.id} value={x.invoiceId || x.id}>{x.invNo} - {x.customerName} - {currency(x.balance)}</option>)}</select></label>
+        <div className="modal-grid">
+          <label>Amount<input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></label>
+          <label>Method<select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>{['Bank', 'Cash', 'M-Pesa'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <button className="primary-action" disabled={saving || !form.invoiceId}>{saving ? 'Posting...' : 'Receive Payment + Update AR'}</button>
+      </form>
+    </div>
+  );
+}
+
+function ReportDateControls({ filters, setFilters }) {
+  return (
+    <div className="report-filter-bar">
+      <label>Start Date<input type="date" value={filters.startDate || ''} onChange={e => setFilters({ ...filters, startDate: e.target.value })} /></label>
+      <label>End Date<input type="date" value={filters.endDate || ''} onChange={e => setFilters({ ...filters, endDate: e.target.value })} /></label>
+    </div>
+  );
+}
+
+function Reports({ user, title }) {
+  const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module: 'Executive', status: 'All Statuses' }));
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const reportState = useServer(user, 'getReportCenterData', [filters], [JSON.stringify(filters)]);
+  const { loading, data, error } = reportState;
+  if (loading) return <Loading title={title} />;
+  if (error) return <ErrorState title={title} error={error} />;
+  async function exportReport(format) {
+    if (format === 'Print') {
+      const file = await rpc('generateReportExport', [user, filters, 'Print']);
+      const html = new TextDecoder().decode(Uint8Array.from(atob(file.content), c => c.charCodeAt(0)));
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+        w.print();
+      }
+      return;
+    }
+    const file = await rpc('generateReportExport', [user, filters, format]);
+    downloadBase64File(file);
+  }
+  return (
+    <section className="page-stack">
+      <div className="sales-hero reports-hero">
+        <div>
+          <span>Enterprise Reporting Engine</span>
+          <h1>Report Center</h1>
+          <p>Generate, export, print, email, schedule, and archive filtered ERP reports from live business records.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.rows.length}</strong><span>Rows</span>
+          <strong>{currency(data.kpis[1].value)}</strong><span>Value</span>
+          <strong>{data.reports.length}</strong><span>Reports</span>
+        </div>
+      </div>
+
+      <Panel title="Report Filters" action={`${data.generatedBy} · ${new Date(data.generatedAt).toLocaleString()}`}>
+        <div className="report-filter-bar report-filter-grid">
+          <label>Module<select value={filters.module} onChange={e => setFilters({ ...filters, module: e.target.value })}>{data.modules.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Report<select value={filters.reportName || data.activeReport.name} onChange={e => setFilters({ ...filters, reportName: e.target.value })}>{data.reports.map(x => <option key={x.name}>{x.name}</option>)}</select></label>
+          <label>Start Date<input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} /></label>
+          <label>End Date<input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} /></label>
+          <label>Warehouse<select value={filters.warehouse || 'All Warehouses'} onChange={e => setFilters({ ...filters, warehouse: e.target.value })}>{['All Warehouses', 'Main Store Nairobi', 'Raw Materials Store', 'Cold Storage'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Status<select value={filters.status || 'All Statuses'} onChange={e => setFilters({ ...filters, status: e.target.value })}>{['All Statuses', 'Active', 'Open', 'Paid', 'Partial', 'Delivered', 'Pending'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+      </Panel>
+
+      <div className="kpi-grid">
+        {data.kpis.map((kpi, index) => <KpiCard key={kpi.label} icon={[FileText, CircleDollarSign, BarChart3, ClipboardCheck][index] || FileText} label={kpi.label} value={kpi.type === 'money' ? currency(kpi.value) : kpi.value} change={index % 2 ? 7 : 4} tone={index % 2 ? 'green' : 'blue'} />)}
+      </div>
+
+      <div className="dashboard-grid">
+        <Panel className="span-7 sales-main-chart" title={data.activeReport.name} action={data.activeReport.dateRange}>
+          <SalesTrendChart data={data.trend} metric="value" />
+        </Panel>
+        <Panel className="span-5" title="Export Actions">
+          <div className="report-action-grid">
+            {['PDF', 'Excel', 'CSV', 'PowerPoint', 'Print'].map(x => <button key={x} onClick={() => exportReport(x)}>{x}</button>)}
+            <button onClick={() => setEmailOpen(true)}>Email</button>
+            <button onClick={() => setScheduleOpen(true)}>Schedule</button>
+          </div>
+        </Panel>
+        <Panel className="span-12" title="Filtered Report Data">
+          <SimpleTable rows={data.rows} columns={Object.keys(data.rows[0] || { type: '', reference: '', date: '', status: '', value: '' }).slice(0, 8)} />
+        </Panel>
+        <Panel className="span-6" title="Report Archive">
+          <SimpleTable rows={data.archive} columns={['reportName', 'module', 'format', 'generatedBy', 'generatedAt', 'status']} />
+        </Panel>
+        <Panel className="span-6" title="Scheduled Reports">
+          <SimpleTable rows={data.schedules} columns={['reportName', 'format', 'schedule', 'recipients', 'status']} />
+        </Panel>
+      </div>
+      {emailOpen && <ReportEmailModal user={user} filters={filters} reportName={data.activeReport.name} onClose={() => setEmailOpen(false)} />}
+      {scheduleOpen && <ReportScheduleModal user={user} filters={filters} reportName={data.activeReport.name} onClose={() => setScheduleOpen(false)} />}
+    </section>
+  );
+}
+
+function ReportEmailModal({ user, filters, reportName, onClose }) {
+  const [form, setForm] = useState({ recipient: '', subject: reportName, message: 'Please find the attached ERP report.', format: 'PDF' });
+  const [saving, setSaving] = useState(false);
+  async function send(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('emailReport', [user, { ...form, reportName, filters }]);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={send}>
+        <header><h2>Email Report</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Recipient<input value={form.recipient} onChange={e => setForm({ ...form, recipient: e.target.value })} required /></label>
+        <label>Subject<input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} /></label>
+        <label>Message<input value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} /></label>
+        <label>Format<select value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>{['PDF', 'Excel', 'CSV', 'PowerPoint'].map(x => <option key={x}>{x}</option>)}</select></label>
+        <button className="primary-action" disabled={saving}>{saving ? 'Queueing...' : 'Queue Email'}</button>
+      </form>
+    </div>
+  );
+}
+
+function ReportScheduleModal({ user, filters, reportName, onClose }) {
+  const [form, setForm] = useState({ reportName, recipients: '', format: 'PDF', schedule: 'Weekly' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('scheduleReport', [user, { ...form, filters }]);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Schedule Report</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <label>Recipients<input value={form.recipients} onChange={e => setForm({ ...form, recipients: e.target.value })} required /></label>
+        <div className="modal-grid">
+          <label>Format<select value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>{['PDF', 'Excel', 'CSV', 'PowerPoint'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Schedule<select value={form.schedule} onChange={e => setForm({ ...form, schedule: e.target.value })}>{['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Create Schedule'}</button>
+      </form>
+    </div>
+  );
+}
+
+function InputCenter({ user }) {
+  const [module, setModule] = useState('customer');
+  const [form, setForm] = useState({});
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const { loading, data, error } = useServer(user, 'getInputCenterData', [], [refreshKey]);
+  if (loading) return <Loading title="Inputs" />;
+  if (error) return <ErrorState title="Inputs" error={error} />;
+  const active = data.modules.find(x => x.id === module) || data.modules[0];
+  const lookupFor = key => {
+    if (key === 'customerId') return data.lookups.customers;
+    if (key === 'supplierId') return data.lookups.suppliers;
+    if (key === 'productId') return data.lookups.products;
+    if (key === 'invoiceId') return data.lookups.invoices;
+    if (key === 'debitAccountId' || key === 'creditAccountId') return data.lookups.accounts;
+    if (key === 'warehouseName') return data.lookups.warehouses;
+    return null;
+  };
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('submitERPInput', [user, module, form]);
+      setForm({});
+      setRefreshKey(x => x + 1);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="page-stack">
+      <div className="sales-hero input-hero">
+        <div>
+          <span>Reliable Data Intake</span>
+          <h1>ERP Input Center</h1>
+          <p>Enter operational records once. The backend routes the input, creates business events, updates ledgers where needed, and keeps an audit trail.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.modules.length}</strong><span>Input Types</span>
+          <strong>{data.recentEvents.length}</strong><span>Events</span>
+          <strong>{data.audit.length}</strong><span>Audit</span>
+        </div>
+      </div>
+      <div className="dashboard-grid">
+        <Panel className="span-5" title="Input Type">
+          <div className="input-type-grid">
+            {data.modules.map(item => <button key={item.id} className={module === item.id ? 'active' : ''} onClick={() => { setModule(item.id); setForm({}); }}>{item.label}</button>)}
+          </div>
+        </Panel>
+        <Panel className="span-7" title={`${active.label} Form`} action="Validated submit">
+          <form className="input-form-grid" onSubmit={submit}>
+            {active.fields.map(field => {
+              const lookup = lookupFor(field);
+              const value = form[field] || '';
+              return (
+                <label key={field}>{label(field)}
+                  {lookup ? (
+                    <select value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required>
+                      <option value="">Select {label(field)}</option>
+                      {lookup.map(option => <option key={option.id || option.name} value={option.id || option.name}>{option.name}</option>)}
+                    </select>
+                  ) : (
+                    <input type={field.toLowerCase().includes('date') ? 'date' : field.toLowerCase().includes('amount') || field.toLowerCase().includes('quantity') || field.toLowerCase().includes('price') || field.toLowerCase().includes('stock') || field.toLowerCase().includes('cost') || field.toLowerCase().includes('paid') || field.toLowerCase().includes('limit') ? 'number' : 'text'} value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required={['name', 'amount', 'quantity', 'productName', 'title'].some(x => field.includes(x))} />
+                  )}
+                </label>
+              );
+            })}
+            <button className="primary-action" disabled={saving}>{saving ? 'Submitting...' : `Submit ${active.label}`}</button>
+          </form>
+        </Panel>
+        <Panel className="span-6" title="Recent Business Events"><SimpleTable rows={data.recentEvents} columns={['eventType', 'aggregateType', 'aggregateId', 'status', 'createdByName', 'createdAt']} /></Panel>
+        <Panel className="span-6" title="Input Audit Trail"><SimpleTable rows={data.audit} columns={['userName', 'action', 'module', 'details', 'createdAt']} /></Panel>
+      </div>
+    </section>
+  );
+}
+
+function SettingsPage({ user }) {
+  const { loading, data, error } = useServer(user, 'getSettings');
+  const health = useServer(user, 'appHealth');
+  if (loading) return <Loading title="Settings" />;
+  if (error) return <ErrorState title="Settings" error={error} />;
+  return (
+    <section className="page-stack">
+      <PageTitle title="Settings" icon={Settings} />
+      <Panel title="System Health">
+        <div className="settings-grid">
+          <label>Persistence<input value={health.data?.persistence || 'checking'} readOnly /></label>
+          <label>Supabase Records<input value={`${health.data?.customers || 0} customers / ${health.data?.products || 0} products`} readOnly /></label>
+        </div>
+      </Panel>
+      <Panel title="Company Profile">
+        <div className="settings-grid">
+          {Object.entries(data || {}).slice(0, 10).map(([key, value]) => (
+            <label key={key}>{key.replaceAll('_', ' ')}<input value={value || ''} readOnly /></label>
+          ))}
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function SimpleTable({ rows, columns }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>{columns.map(c => <th key={c}>{label(c)}</th>)}<th /></tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 8).map((row, index) => (
+            <tr key={row.id || index}>
+              {columns.map(c => <td key={c}>{formatCell(row[c], c)}</td>)}
+              <td className="more">...</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!rows.length && <div className="empty-state">No records yet</div>}
+    </div>
+  );
+}
+
+function TopProducts({ categories }) {
+  const products = categories.length ? categories : [
+    { name: 'Bactrolure Wick', total: 38400 },
+    { name: 'Organic Neem Oil', total: 33600 }
+  ];
+  return (
+    <div className="product-list">
+      {products.slice(0, 5).map((p, i) => (
+        <div key={p.name}>
+          <span className="product-icon"><Package size={20} /></span>
+          <strong>{p.name}</strong>
+          <em>{320 - i * 35}</em>
+          <b>{currency(p.total)}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Loading({ title }) {
+  return <section className="page-stack"><PageTitle title={title} /><div className="loading-card"><Loader2 className="spin" /> Loading...</div></section>;
+}
+
+function ErrorState({ title, error }) {
+  return <section className="page-stack"><PageTitle title={title} /><div className="error-card"><AlertTriangle /> {error}</div></section>;
+}
+
+function label(key) {
+  return key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+}
+
+function formatCell(value, key) {
+  if (['total', 'balance', 'amount', 'paid', 'subtotal', 'tax', 'value', 'revenue', 'profit', 'pipeline', 'spend', 'outstandingBalance', 'invoiceAmount', 'paidAmount', 'creditLimit', 'expectedCost', 'inventoryValue', 'unitCost', 'sellingPrice', 'stockValue', 'rent', 'utilities', 'labor', 'damageCosts', 'expiryLosses', 'totalCost', 'profitPotential', 'storageCost', 'openingBalance', 'deposit', 'withdrawal', 'debit', 'credit', 'totalDebit', 'totalCredit', 'basicSalary', 'allowances', 'deductions', 'netPay', 'liability', 'purchaseCost', 'accumulatedDepreciation', 'currentValue', 'budget', 'actual', 'variance', 'forecast', 'cost', 'profitability', 'current', 'forecast30'].includes(key)) return currency(value);
+  if (['status', 'liveStatus', 'approvalStatus', 'paymentStatus'].includes(key)) return <span className={`status ${String(value).toLowerCase().replaceAll(' ', '-')}`}>{value}</span>;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return value || '-';
+}
+
+createRoot(document.getElementById('root')).render(<App />);

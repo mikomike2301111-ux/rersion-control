@@ -1,0 +1,7 @@
+.vercel
+node_modules
+dist
+.playwright-mcp
+.env
+.env.*
+npm-debug.log*
