@@ -165,6 +165,31 @@ Verification:
 Notes / next steps:
 - A transparent or cropped logo variant would improve small-sidebar readability further.
 
+## 2026-06-10 - Universal Sans and IBM Plex Mono Typography
+
+Target area:
+Typography, code/technical text
+
+Reason:
+The ERP should use a cleaner x.ai/Grok-style main text stack and a proper monospace for technical/code-like values.
+
+Files changed:
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Set body, controls, headings, and main UI text to prefer `Universal Sans`.
+- Added strong fallbacks for systems where Universal Sans is not installed.
+- Added IBM Plex Mono from Google Fonts for code, badges, status tags, report metadata, and technical values.
+- Kept tabular numeric alignment for KPI and financial values.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+
+Notes / next steps:
+- If a licensed Universal Sans font file is supplied later, add it through `@font-face` for exact rendering.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 * { box-sizing: border-box; }
 :root {
@@ -11,12 +11,14 @@
   --red: #ff2d2d;
   --blue: #2563eb;
   --shadow: 0 10px 28px rgba(16, 24, 40, 0.06);
+  --font-main: "Universal Sans", "UniversalSans", "Inter", "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 body {
   margin: 0;
   background: #fff;
   color: var(--text);
-  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-main);
   font-weight: 500;
 }
 button, input, select, textarea { font: inherit; }
@@ -970,13 +972,13 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
   .crm-card-grid { grid-template-columns: 1fr; }
 }
 
-/* High-end SaaS typography: Plus Jakarta Sans headings, Inter body and numbers. */
+/* High-end SaaS typography: Universal Sans main UI, IBM Plex Mono technical text. */
 body,
 button,
 input,
 select,
 textarea {
-  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-main);
 }
 body { font-weight: 500; }
 h1,
@@ -990,8 +992,27 @@ h3,
 .modal-card h2,
 .brand-lockup h1,
 .sidebar-brand span {
-  font-family: "Plus Jakarta Sans", Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-main);
   font-weight: 800;
+}
+code,
+pre,
+kbd,
+samp,
+.mono,
+.status,
+.badge,
+.notify span,
+.report-template-grid span,
+.report-archive-list em,
+.settings-section-map em,
+.settings-kv-grid strong,
+.finance-trial-card span,
+.finance-control-list span,
+.production-order-list span,
+.route-list b,
+.county-grid span {
+  font-family: var(--font-mono);
 }
 .sidebar-brand span,
 th,
@@ -1066,7 +1087,7 @@ em,
   font-weight: 700;
 }
 
-/* Numeric values use Inter with tabular figures for clean ERP/KPI alignment. */
+/* Numeric values use tabular figures for clean ERP/KPI alignment. */
 .kpi-card h3,
 .sales-hero-stats strong,
 .change,
@@ -1092,7 +1113,7 @@ em,
 .product-list b,
 td,
 option {
-  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  font-family: var(--font-main);
   font-variant-numeric: tabular-nums;
 }
 
