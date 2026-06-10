@@ -84,6 +84,34 @@ Verification:
 Notes / next steps:
 - Future deep links can add record-level routes, such as `#/sales/orders/:id`, when detail drawers become route-aware.
 
+## 2026-06-10 - Enterprise Settings Control Center
+
+Target area:
+Settings, administration, system controls
+
+Reason:
+Settings needed to become the ERP master control center instead of a small company profile page.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `src/styles.css`
+
+Improvements:
+- Added `getSettingsWorkspaceData` backend aggregation for company settings, users, roles, permissions, departments, warehouses, rules, notifications, templates, integrations, audit, security, backups, API settings, system health, and advanced flags.
+- Added `saveSettingsSection` for editable company/system settings and `saveSettingsUser` for user creation.
+- Rebuilt Settings as a tabbed enterprise control center with deep links like `#/settings/users`, `#/settings/security`, and `#/settings/backup`.
+- Added editable company settings and a working new-user modal.
+- Added administration panels for permissions, departments, warehouses, business rules, notifications, documents, integrations, audit, security, recovery, data management, APIs, health, and advanced flags.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+- Verified built Vite preview returns 200 for `#/settings/company`, `#/settings/users`, `#/settings/security`, and `#/settings/backup`.
+
+Notes / next steps:
+- Future upgrades can make each settings rule button open its own detailed policy editor.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

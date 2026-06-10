@@ -2734,27 +2734,183 @@ function InputCenter({ user }) {
 }
 
 function SettingsPage({ user }) {
-  const { loading, data, error } = useServer(user, 'getSettings');
-  const health = useServer(user, 'appHealth');
+  const tabs = ['company', 'users', 'permissions', 'departments', 'warehouses', 'products', 'manufacturing', 'procurement', 'inventory', 'sales', 'finance', 'tax', 'notifications', 'templates', 'automation', 'integrations', 'audit', 'security', 'backup', 'data', 'api', 'health', 'advanced'];
+  const [view, setView] = useRouteTab('settings', tabs, 'company');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [companyForm, setCompanyForm] = useState({});
+  const [userModal, setUserModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const { loading, data, error } = useServer(user, 'getSettingsWorkspaceData', [], [refreshKey]);
+  useEffect(() => {
+    if (data?.settings) setCompanyForm(data.settings);
+  }, [data?.settings]);
   if (loading) return <Loading title="Settings" />;
   if (error) return <ErrorState title="Settings" error={error} />;
+  const refresh = () => setRefreshKey(x => x + 1);
+  async function saveCompany(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('saveSettingsSection', [user, 'company', companyForm]);
+      refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+  const rulesForView = data.rules[view] || [];
   return (
-    <section className="page-stack">
-      <PageTitle title="Settings" icon={Settings} />
-      <Panel title="System Health">
-        <div className="settings-grid">
-          <label>Persistence<input value={health.data?.persistence || 'checking'} readOnly /></label>
-          <label>Supabase Records<input value={`${health.data?.customers || 0} customers / ${health.data?.products || 0} products`} readOnly /></label>
+    <section className="page-stack settings-workspace">
+      <div className="sales-hero settings-hero">
+        <div>
+          <span>Enterprise System Control Center</span>
+          <h1>Settings</h1>
+          <p>Control company profile, users, roles, permissions, workflows, integrations, security, backups, templates, API access, and operational rules from one administration center.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.users.length}</strong><span>Users</span>
+          <strong>{data.health.records}</strong><span>Records</span>
+          <strong>{data.health.businessEvents}</strong><span>Events</span>
+        </div>
+      </div>
+
+      <div className="settings-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'company' && (
+        <div className="dashboard-grid">
+          <Panel className="span-8" title="Company Settings" action="Editable">
+            <form className="settings-form-grid" onSubmit={saveCompany}>
+              {[
+                ['company_name', 'Company Name'], ['company_address', 'Company Address'], ['company_phone', 'Phone Numbers'], ['company_email', 'Email Addresses'],
+                ['website', 'Website'], ['business_registration_no', 'Business Registration No.'], ['kra_pin', 'Tax PIN'], ['vat_number', 'VAT Number'],
+                ['default_currency', 'Default Currency'], ['default_language', 'Default Language'], ['default_timezone', 'Default Timezone'], ['date_format', 'Date Format'],
+                ['number_format', 'Number Format'], ['bank_name', 'Bank Name'], ['bank_account', 'Bank Account'], ['mpesa_paybill', 'M-Pesa Paybill'],
+                ['mpesa_account', 'M-Pesa Account'], ['invoice_footer', 'Invoice Footer']
+              ].map(([key, name]) => (
+                <label key={key}>{name}<input value={companyForm[key] || ''} onChange={e => setCompanyForm({ ...companyForm, [key]: e.target.value })} /></label>
+              ))}
+              <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Save Company Settings'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-4" title="Branding Preview">
+            <div className="settings-brand-preview">
+              <div>FT</div>
+              <strong>{companyForm.company_name || data.settings.company_name}</strong>
+              <span>{companyForm.company_email || data.settings.company_email}</span>
+              <em>{companyForm.default_currency || 'KSh'} / {companyForm.default_timezone || 'Africa/Nairobi'}</em>
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {view === 'users' && (
+        <div className="dashboard-grid">
+          <Panel className="span-12" title="Users & Roles" action="Create, edit, deactivate">
+            <div className="settings-toolbar"><button onClick={() => setUserModal({})}><Plus size={16} /> New User</button><span>Assign departments, warehouses, counties, roles, and status.</span></div>
+            <SimpleTable rows={data.users} columns={['name', 'email', 'role', 'department', 'warehouse', 'county', 'status', 'lastLogin']} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 'permissions' && (
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Permission Actions"><SettingsPillList items={data.permissionActions} /></Panel>
+          <Panel className="span-7" title="Role Permission Matrix"><SimpleTable rows={data.permissionMatrix} columns={['role', 'view', 'create', 'edit', 'approve', 'export', 'delete', 'manage']} /></Panel>
+          <Panel className="span-12" title="Modules Controlled"><SettingsPillList items={data.modules} /></Panel>
+        </div>
+      )}
+
+      {view === 'departments' && <SettingsTable title="Departments" rows={data.departments} columns={['name', 'manager', 'members', 'status']} />}
+      {view === 'warehouses' && <SettingsTable title="Warehouse Settings" rows={data.warehouses} columns={['name', 'location', 'manager', 'utilization', 'status']} />}
+      {view === 'products' && <SettingsRules title="Product Settings" items={['Product categories', 'Units of measure', 'KG / G / MG conversions', 'Litres / ML conversions', 'Pieces / Boxes / Cartons', 'Barcode settings', 'QR code settings', 'Product number generation']} />}
+      {['manufacturing', 'procurement', 'inventory', 'sales', 'finance'].includes(view) && <SettingsRules title={`${label(view)} Rules`} items={rulesForView} />}
+      {view === 'tax' && <SettingsRules title="Tax Settings" items={['VAT setup', 'Withholding tax rules', 'Filing periods', 'Tax report templates', 'KRA PIN controls', 'Tax audit trail']} />}
+      {view === 'notifications' && <SettingsTable title="Notification Settings" rows={data.notifications} columns={['channel', 'event', 'status']} />}
+      {view === 'templates' && <SettingsTable title="Document Templates" rows={data.documentTemplates} columns={['name', 'version', 'status']} />}
+      {view === 'automation' && <SettingsRules title="Workflow Automation" items={['Sales quote approval', 'Purchase order approval', 'Production start material reservation', 'Delivery confirmation workflow', 'Finance posting automation', 'Low stock alerts']} />}
+      {view === 'integrations' && <SettingsTable title="Integrations" rows={data.integrations} columns={['name', 'status', 'detail']} />}
+      {view === 'audit' && (
+        <div className="dashboard-grid">
+          <Panel className="span-6" title="Recent Audit Trail"><SimpleTable rows={data.recentAudit} columns={['userName', 'action', 'module', 'details', 'createdAt']} /></Panel>
+          <Panel className="span-6" title="Business Events"><SimpleTable rows={data.recentEvents} columns={['eventType', 'aggregateType', 'aggregateId', 'status', 'createdByName', 'createdAt']} /></Panel>
+        </div>
+      )}
+      {view === 'security' && <SettingsKeyValues title="Security" data={data.security} />}
+      {view === 'backup' && <SettingsTable title="Backup & Recovery" rows={data.backups} columns={['name', 'schedule', 'status']} />}
+      {view === 'data' && <SettingsRules title="Data Management" items={['CSV import', 'Excel export', 'Archive old records', 'Clean duplicate records', 'Data retention policy', 'Department data ownership']} />}
+      {view === 'api' && <SettingsTable title="API Settings" rows={data.apiSettings} columns={['name', 'scope', 'status']} />}
+      {view === 'health' && <SettingsKeyValues title="System Health" data={data.health} />}
+      {view === 'advanced' && <SettingsTable title="Advanced Feature Flags" rows={data.advancedFlags} columns={['name', 'enabled']} />}
+
+      <Panel title="Settings Map" action={`${data.systemSections.length} sections`}>
+        <div className="settings-section-map">
+          {data.systemSections.map(section => <article key={section.id}><strong>{section.name}</strong><span>{section.detail}</span><em>{section.status}</em></article>)}
         </div>
       </Panel>
-      <Panel title="Company Profile">
-        <div className="settings-grid">
-          {Object.entries(data || {}).slice(0, 10).map(([key, value]) => (
-            <label key={key}>{key.replaceAll('_', ' ')}<input value={value || ''} readOnly /></label>
-          ))}
-        </div>
-      </Panel>
+      {userModal && <SettingsUserModal user={user} meta={data} onClose={() => setUserModal(null)} onSaved={() => { setUserModal(null); refresh(); }} />}
     </section>
+  );
+}
+
+function SettingsTable({ title, rows, columns }) {
+  return <Panel title={title}><SimpleTable rows={rows} columns={columns} /></Panel>;
+}
+
+function SettingsRules({ title, items }) {
+  return (
+    <Panel title={title} action={`${items.length} controls`}>
+      <div className="settings-rule-grid">
+        {items.map(item => <article key={item}><CheckCircle2 size={17} /><span>{item}</span><button>Configure</button></article>)}
+      </div>
+    </Panel>
+  );
+}
+
+function SettingsPillList({ items }) {
+  return <div className="settings-pill-list">{items.map(item => <span key={item}>{item}</span>)}</div>;
+}
+
+function SettingsKeyValues({ title, data }) {
+  return (
+    <Panel title={title}>
+      <div className="settings-kv-grid">
+        {Object.entries(data || {}).map(([key, value]) => <article key={key}><span>{label(key)}</span><strong>{String(value)}</strong></article>)}
+      </div>
+    </Panel>
+  );
+}
+
+function SettingsUserModal({ user, meta, onClose, onSaved }) {
+  const [form, setForm] = useState({ name: '', email: '', phone: '', role: meta.roles[0] || 'Sales Officer', status: 'Active', department: meta.departments[0]?.name || 'Sales', warehouse: 'All', county: 'Nairobi' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('saveSettingsUser', [user, form]);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>New ERP User</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
+          <label>Email<input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label>
+          <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
+          <label>Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>{meta.roles.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{meta.departments.map(x => <option key={x.id}>{x.name}</option>)}</select></label>
+          <label>Warehouse<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })}>{['All', ...meta.warehouses.map(x => x.name)].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>County<input value={form.county} onChange={e => setForm({ ...form, county: e.target.value })} /></label>
+          <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Active', 'Inactive'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Create User'}</button>
+      </form>
+    </div>
   );
 }
 

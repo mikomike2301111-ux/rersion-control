@@ -962,6 +962,20 @@ function publicUser(u) {
   return u && { id: u.id, name: u.name, email: u.email, role: u.role, phone: u.phone };
 }
 
+function roleDepartment(role) {
+  const map = {
+    [ROLES.ADMIN]: 'Executive',
+    [ROLES.MANAGER]: 'Executive',
+    [ROLES.SALES]: 'Sales',
+    [ROLES.PROCUREMENT]: 'Procurement',
+    [ROLES.WAREHOUSE]: 'Inventory',
+    [ROLES.PRODUCTION]: 'Manufacturing',
+    [ROLES.ACCOUNTANT]: 'Finance',
+    [ROLES.FIELD]: 'Field Operations'
+  };
+  return map[role] || 'Operations';
+}
+
 function reqRole(user, ...roles) {
   const d = data();
   if (!user) throw new Error('Authentication required');
@@ -1854,6 +1868,182 @@ const api = {
   },
   getSettings: user => (reqRole(user), data().settings),
   saveSettings(user, settings) { reqRole(user, ROLES.ADMIN, ROLES.MANAGER); data().settings = { ...data().settings, ...settings }; return { success: true }; },
+  getSettingsWorkspaceData(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const d = data();
+    const settings = {
+      default_currency: 'KSh',
+      default_language: 'English',
+      default_timezone: 'Africa/Nairobi',
+      date_format: 'DD/MM/YYYY',
+      number_format: '1,234.56',
+      website: 'https://erpftc.vercel.app',
+      business_registration_no: 'FTBIO-2024-KE',
+      vat_number: 'VAT-FTB-001',
+      ...d.settings
+    };
+    const roles = Object.values(ROLES).concat(['Finance Manager', 'Sales Manager', 'Inventory Manager', 'Production Manager', 'HR Manager', 'CRM Officer', 'Auditor', 'Viewer', 'Custom Role']);
+    const modules = ['Dashboard', 'Analytics', 'Sales', 'Purchases', 'Inventory', 'Finance', 'Manufacturing', 'CRM', 'Reports', 'Settings'];
+    const permissionActions = ['View', 'Create', 'Edit', 'Approve', 'Export', 'Delete', 'Manage'];
+    const systemSections = [
+      ['Company Settings', 'Branding, address, tax profile, currency, language, timezone'],
+      ['Users & Roles', 'Create users, assign roles, departments, warehouses, counties'],
+      ['Permissions', 'Module access and action-level controls'],
+      ['Departments', 'Operational ownership and approval routing'],
+      ['Warehouses', 'Locations, zones, limits, managers, stock access'],
+      ['Products', 'Categories, units, conversions, barcode and QR rules'],
+      ['Manufacturing Rules', 'BOMs, formula versioning, QC, yield and waste rules'],
+      ['Procurement Rules', 'Approval workflows, supplier evaluation, purchase limits'],
+      ['Inventory Rules', 'Reorder levels, transfers, expiry, stock audit rules'],
+      ['Sales Rules', 'Credit control, quotation approvals, commissions, discounts'],
+      ['Finance Rules', 'Posting controls, journals, fiscal periods, chart of accounts'],
+      ['Payroll Rules', 'Allowances, deductions, approval and posting rules'],
+      ['Tax Settings', 'VAT, withholding, filing periods, tax reporting'],
+      ['Notification Settings', 'Alerts for stock, approvals, overdue invoices'],
+      ['Email Settings', 'SMTP identity, templates, delivery logs'],
+      ['SMS Settings', 'Provider setup, sender ID, message templates'],
+      ['Document Templates', 'Invoices, quotes, POs, delivery notes, statements'],
+      ['Workflow Automation', 'Approval routes and event-driven automation'],
+      ['Integrations', 'Supabase, Vercel, M-Pesa, email, bank, API connections'],
+      ['Audit Controls', 'Retention, immutable events, export audit logs'],
+      ['Security', 'Password policy, sessions, MFA, IP allowlists'],
+      ['Backup & Recovery', 'Backup status, restore points, data export'],
+      ['Data Management', 'Import, export, cleanup, archiving rules'],
+      ['API Settings', 'API keys, webhooks, rate limits, service access'],
+      ['System Health', 'Database, API, deployment and event processing status'],
+      ['Advanced Settings', 'Developer controls and enterprise feature flags']
+    ].map(([name, detail], index) => ({ id: `settings-${index + 1}`, name, detail, status: index < 12 ? 'Configured' : 'Ready' }));
+    const warehouses = (d.inventoryWarehouses || []).map(wh => ({
+      id: wh.id || wh.name,
+      name: wh.name,
+      location: wh.location || wh.county || 'Nairobi',
+      manager: wh.manager || d.users.find(x => x.role === ROLES.WAREHOUSE)?.name || 'Warehouse Manager',
+      utilization: Math.round((num(wh.used) / Math.max(1, num(wh.capacity))) * 100),
+      status: wh.status || 'Active'
+    }));
+    const users = d.users.map(row => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      phone: row.phone,
+      status: row.status,
+      department: row.department || roleDepartment(row.role),
+      warehouse: row.warehouse || (row.role === ROLES.WAREHOUSE ? warehouses[0]?.name : 'All'),
+      county: row.county || (d.counties?.[0]?.name || 'Nairobi'),
+      lastLogin: row.lastLogin || row.updatedAt || ''
+    }));
+    const integrations = [
+      ['Supabase Database', 'Connected', 'Primary ERP data state and live records'],
+      ['Vercel Hosting', 'Connected', 'Production deployment and API runtime'],
+      ['M-Pesa Payments', 'Ready', 'Payment collection setup placeholder'],
+      ['Email Service', 'Ready', 'Reports, invoices, statements and notifications'],
+      ['Bank Feed', 'Ready', 'Reconciliation and cash movement import'],
+      ['Public API', 'Restricted', 'Service key access and webhooks']
+    ].map(([name, status, detail], index) => ({ id: `INT-${index + 1}`, name, status, detail }));
+    const health = {
+      persistence: process.env.SUPABASE_URL ? 'Supabase connected' : 'Local demo state',
+      users: d.users.length,
+      records: d.sales.length + d.customers.length + d.inventory.length + d.invoices.length + d.purchaseOrders.length,
+      businessEvents: (d.businessEvents || []).length,
+      auditLogs: d.activity.length + (d.auditLogs || []).length,
+      lastBackup: new Date().toISOString(),
+      environment: process.env.VERCEL ? 'Vercel Production' : 'Local Development'
+    };
+    return {
+      settings,
+      currentUser: publicUser(u),
+      users,
+      roles,
+      modules,
+      permissionActions,
+      permissionMatrix: roles.slice(0, 10).map(role => ({
+        role,
+        view: true,
+        create: !['Viewer', 'Auditor'].includes(role),
+        edit: !['Viewer', 'Auditor'].includes(role),
+        approve: ['Admin', 'Manager', 'Finance Manager', 'Sales Manager', 'Production Manager'].includes(role),
+        export: role !== 'Viewer',
+        delete: ['Admin'].includes(role),
+        manage: ['Admin', 'Manager'].includes(role)
+      })),
+      departments: ['Executive', 'Sales', 'Finance', 'Inventory', 'Procurement', 'Manufacturing', 'CRM', 'Field Operations', 'HR', 'Audit'].map((name, index) => ({ id: `DEP-${index + 1}`, name, manager: users[index % users.length]?.name || 'Admin', members: users.filter((_, i) => i % 10 === index % 10).length || 1, status: 'Active' })),
+      warehouses,
+      rules: {
+        manufacturing: ['Formula version approval', 'Batch number auto-generation', 'QC required before release', 'Waste threshold alerts'],
+        procurement: ['PO approval above KSh100,000', 'Supplier scoring enabled', 'GRN variance review', 'Automatic reorder suggestions'],
+        inventory: ['Reorder point alerts', 'Expiry tracking', 'Transfer approval', 'Cycle count audit'],
+        sales: ['Credit limit enforcement', 'Quote approval workflow', 'Delivery confirmation required', 'Invoice auto-generation'],
+        finance: ['Balanced journals only', 'Immutable audit trail', 'Monthly close controls', 'Tax report generation']
+      },
+      notifications: [
+        { id: 'N1', channel: 'Email', event: 'Approval Required', status: 'Active' },
+        { id: 'N2', channel: 'SMS', event: 'Delivery Assigned', status: 'Ready' },
+        { id: 'N3', channel: 'In App', event: 'Low Stock', status: 'Active' },
+        { id: 'N4', channel: 'Email', event: 'Overdue Invoice', status: 'Active' }
+      ],
+      documentTemplates: ['Invoice', 'Quotation', 'Purchase Order', 'Delivery Note', 'Customer Statement', 'Production Batch Sheet', 'Goods Received Note'].map((name, index) => ({ id: `DOC-${index + 1}`, name, version: `v${index + 1}.0`, status: 'Active' })),
+      integrations,
+      security: {
+        mfa: 'Recommended',
+        sessionTimeout: '8 hours',
+        passwordPolicy: 'Minimum 10 characters',
+        apiAccess: 'Service role restricted',
+        rowLevelSecurity: 'Enabled for ERP state',
+        auditRetention: '7 years'
+      },
+      backups: [
+        { id: 'BKP-1', name: 'Daily Supabase Snapshot', schedule: 'Daily 00:01', status: 'Ready' },
+        { id: 'BKP-2', name: 'Vercel Deployment Rollback', schedule: 'Every deploy', status: 'Active' },
+        { id: 'BKP-3', name: 'ERP JSON Export', schedule: 'On demand', status: 'Ready' }
+      ],
+      health,
+      recentAudit: d.activity.slice(0, 12),
+      recentEvents: (d.businessEvents || []).slice(0, 12),
+      apiSettings: [
+        { id: 'API-1', name: 'ERP RPC API', scope: 'Internal', status: 'Active' },
+        { id: 'API-2', name: 'Report Export API', scope: 'Authenticated', status: 'Active' },
+        { id: 'API-3', name: 'Webhook Receiver', scope: 'Restricted', status: 'Ready' }
+      ],
+      advancedFlags: [
+        { id: 'FLG-1', name: 'Realtime Events', enabled: true },
+        { id: 'FLG-2', name: 'Materialized Analytics', enabled: true },
+        { id: 'FLG-3', name: 'Enterprise Audit Mode', enabled: true },
+        { id: 'FLG-4', name: 'AI Recommendations', enabled: true }
+      ],
+      systemSections
+    };
+  },
+  saveSettingsSection(user, section, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const key = String(section || 'company');
+    if (key === 'company') data().settings = { ...data().settings, ...payload };
+    else {
+      data().settingsAdmin ||= {};
+      data().settingsAdmin[key] = { ...(data().settingsAdmin[key] || {}), ...payload, updatedAt: new Date().toISOString(), updatedBy: u.name };
+    }
+    emitBusinessEvent(u, `settings.${key}.updated`, 'settings', key, payload);
+    log(u, 'Update Settings', 'Settings', key);
+    return { success: true, settings: data().settings };
+  },
+  saveSettingsUser(user, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const row = {
+      id: payload.id,
+      name: payload.name || 'New User',
+      email: payload.email || `user${Date.now()}@farmtrack.local`,
+      password: payload.password || 'ChangeMe123',
+      role: payload.role || ROLES.SALES,
+      phone: payload.phone || '',
+      status: payload.status || 'Active',
+      department: payload.department || roleDepartment(payload.role || ROLES.SALES),
+      warehouse: payload.warehouse || 'All',
+      county: payload.county || 'Nairobi'
+    };
+    const saved = save('users', u, row);
+    emitBusinessEvent(u, 'settings.user.saved', 'users', saved.id || row.id, row);
+    return saved;
+  },
   getBackupList: () => [],
   createDailyBackup: () => 'Backup is configured in Vercel deployment.',
   setupAutoBackup: () => 'Auto backup is not needed for this Vercel demo.',

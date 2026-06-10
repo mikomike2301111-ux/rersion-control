@@ -682,6 +682,146 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
 .settings-grid { padding: 8px 20px 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .settings-grid label { color: var(--muted); text-transform: capitalize; font-size: 12px; display: grid; gap: 8px; }
 .settings-grid input { height: 42px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; color: var(--text); }
+.settings-hero { background: radial-gradient(circle at 80% 20%, rgba(5,5,5,.2), transparent 30%), radial-gradient(circle at 12% 84%, rgba(23,180,81,.2), transparent 28%), #050505; }
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.settings-tabs button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 14px;
+  background: #fff;
+  color: #344054;
+  font-weight: 900;
+}
+.settings-tabs button.active, .settings-tabs button:hover { background: #050505; color: #fff; border-color: #050505; }
+.settings-form-grid {
+  padding: 10px 20px 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+.settings-form-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+.settings-form-grid input {
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0 11px;
+  color: var(--text);
+  background: #fff;
+}
+.settings-form-grid .primary-action { grid-column: 1 / -1; }
+.settings-brand-preview {
+  padding: 20px;
+  min-height: 260px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.settings-brand-preview div {
+  width: 78px;
+  height: 78px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: #050505;
+  color: #fff;
+  font-weight: 900;
+  font-size: 26px;
+}
+.settings-brand-preview strong { font-size: 20px; }
+.settings-brand-preview span, .settings-brand-preview em { color: #667085; font-style: normal; font-weight: 800; }
+.settings-toolbar {
+  padding: 10px 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.settings-toolbar button {
+  min-height: 38px;
+  border-radius: 10px;
+  background: #050505;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  font-weight: 900;
+}
+.settings-toolbar span { color: #667085; font-size: 12px; font-weight: 800; }
+.settings-pill-list {
+  padding: 12px 20px 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.settings-pill-list span {
+  border: 1px solid #eef0f3;
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: #fff;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 900;
+}
+.settings-rule-grid, .settings-section-map, .settings-kv-grid {
+  padding: 12px 20px 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.settings-rule-grid article, .settings-section-map article, .settings-kv-grid article {
+  border: 1px solid #eef0f3;
+  border-radius: 12px;
+  background: #fff;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.settings-rule-grid article {
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+}
+.settings-rule-grid svg { color: #17b451; }
+.settings-rule-grid span, .settings-section-map span, .settings-kv-grid span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+}
+.settings-rule-grid button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #344054;
+  padding: 0 10px;
+  font-weight: 900;
+}
+.settings-section-map strong, .settings-kv-grid strong { color: #101828; }
+.settings-section-map em {
+  width: fit-content;
+  border-radius: 999px;
+  background: #e8f8ee;
+  color: #078236;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
 .loading-card, .error-card, .empty-state { border: 1px solid var(--line); border-radius: 12px; min-height: 140px; display: grid; place-items: center; color: var(--muted); }
 .error-card { color: #d92d20; display: flex; justify-content: center; gap: 10px; }
 .spin { animation: spin 1s linear infinite; }
