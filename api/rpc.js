@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const ROLES = {
   ADMIN: 'Admin',
   MANAGER: 'Manager',
@@ -50,32 +52,63 @@ let supabaseReady = null;
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || '';
 const STATE_ID = 'farmtrack-demo';
+const TENANT_SLUG = 'farmtrack-demo';
+const TENANT_ID = uuidFromString(`tenant:${TENANT_SLUG}`);
+const NORMALIZED_TABLES = [
+  'tenants', 'profiles', 'customers', 'suppliers', 'products', 'warehouses',
+  'inventory_items', 'inventory_transactions', 'sales_orders', 'sales_order_items',
+  'invoices', 'payments', 'purchase_orders', 'production_jobs', 'journal_entries',
+  'business_events'
+];
+
+function uuidFromString(value) {
+  const hash = crypto.createHash('md5').update(String(value || gid())).digest('hex');
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-${((parseInt(hash.slice(16, 18), 16) & 0x3f) | 0x80).toString(16)}${hash.slice(18, 20)}-${hash.slice(20, 32)}`;
+}
 
 function supabaseEnabled() {
   return Boolean(SUPABASE_URL && SUPABASE_KEY);
 }
 
-async function supabaseFetch(path, options = {}) {
-  if (!supabaseEnabled()) return null;
+async function supabaseRequest(path, options = {}) {
+  const { affectsReady = true, ...fetchOptions } = options;
+  if (!supabaseEnabled()) return { ok: false, status: 0, data: null, error: 'Supabase environment variables are missing' };
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       apikey: SUPABASE_KEY,
       Authorization: `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation',
-      ...(options.headers || {})
+      ...(fetchOptions.headers || {})
     }
   });
-  if (!response.ok) {
-    supabaseReady = false;
-    return null;
-  }
-  supabaseReady = true;
-  if (response.status === 204) return null;
   const text = await response.text();
-  if (!text) return null;
-  return JSON.parse(text);
+  if (!response.ok) {
+    if (affectsReady) supabaseReady = false;
+    return { ok: false, status: response.status, data: null, error: text || response.statusText };
+  }
+  if (affectsReady) supabaseReady = true;
+  return { ok: true, status: response.status, data: text ? JSON.parse(text) : null, error: '' };
+}
+
+async function supabaseFetch(path, options = {}) {
+  const result = await supabaseRequest(path, options);
+  return result.ok ? result.data : null;
+}
+
+async function supabaseUpsert(table, rows, onConflict) {
+  const list = Array.isArray(rows) ? rows.filter(Boolean) : [rows].filter(Boolean);
+  if (!list.length) return [];
+  const conflict = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
+  const result = await supabaseRequest(`${table}${conflict}`, {
+    method: 'POST',
+    affectsReady: false,
+    headers: { Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(list)
+  });
+  if (!result.ok) throw new Error(`${table} sync failed: ${result.error}`);
+  return Array.isArray(result.data) ? result.data : [];
 }
 
 async function fetchPublicView(name, query = 'select=*') {
@@ -114,6 +147,323 @@ async function saveState() {
     headers: { Prefer: 'resolution=merge-duplicates' },
     body: JSON.stringify({ id: STATE_ID, data: db, updated_at: new Date().toISOString() })
   });
+  await syncNormalizedSupabase({ silent: true });
+}
+
+async function getNormalizedSupabaseStatus() {
+  if (!supabaseEnabled()) {
+    return { enabled: false, ready: false, mode: 'not_configured', missingTables: NORMALIZED_TABLES, tables: [] };
+  }
+  const tables = [];
+  for (const table of NORMALIZED_TABLES) {
+    const result = await supabaseRequest(`${table}?select=*&limit=1`, { method: 'GET', affectsReady: false });
+    tables.push({ table, ok: result.ok, status: result.status, error: result.ok ? '' : result.error });
+  }
+  const missingTables = tables.filter(x => !x.ok).map(x => x.table);
+  return {
+    enabled: true,
+    ready: missingTables.length === 0,
+    mode: missingTables.length ? 'json_bridge_only' : 'normalized_ready',
+    missingTables,
+    tables
+  };
+}
+
+function statusText(value, fallback = 'active') {
+  return String(value || fallback).trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function dateOnly(value) {
+  return String(value || today()).slice(0, 10);
+}
+
+function normalizedRows() {
+  const d = data();
+  const settings = d.settings || {};
+  const users = d.users || [];
+  const customers = d.customers || [];
+  const suppliers = d.suppliers || [];
+  const products = d.products || [];
+  const inventory = d.inventory || [];
+  const sales = d.sales || [];
+  const saleItems = d.saleItems || [];
+  const invoices = d.invoices || [];
+  const payments = d.payments || [];
+  const purchaseOrders = d.purchaseOrders || [];
+  const productionJobs = d.productionOrders || d.production || [];
+  const journalEntries = [...(d.financeJournalEntries || []), ...(d.financeManualJournals || [])];
+  const warehouseNames = Array.from(new Set([
+    ...(d.inventoryWarehouses || []).map(x => x.name),
+    ...inventory.map(x => x.warehouseName),
+    'Main Store Nairobi'
+  ].filter(Boolean)));
+  const productByName = new Map(products.map(p => [p.name, p]));
+  const customerByName = new Map(customers.map(c => [c.name, c]));
+
+  return {
+    tenants: [{
+      id: TENANT_ID,
+      name: settings.company_name || 'Farmtrack Bio Sciences Ltd',
+      slug: TENANT_SLUG,
+      country: 'KE',
+      base_currency: settings.default_currency || 'KES',
+      status: 'active',
+      updated_at: new Date().toISOString()
+    }],
+    profiles: users.map(u => ({
+      id: uuidFromString(`profile:${u.id || u.email}`),
+      tenant_id: TENANT_ID,
+      full_name: u.name || 'ERP User',
+      email: String(u.email || `${u.id}@unity.local`).toLowerCase(),
+      role: u.role || ROLES.VIEWER || 'viewer',
+      phone: u.phone || '',
+      status: statusText(u.status, 'active'),
+      updated_at: new Date().toISOString()
+    })),
+    warehouses: warehouseNames.map((name, index) => ({
+      id: uuidFromString(`warehouse:${name}`),
+      tenant_id: TENANT_ID,
+      name,
+      code: `WH-${String(index + 1).padStart(3, '0')}`,
+      type: /raw/i.test(name) ? 'raw_materials' : /cold/i.test(name) ? 'cold_storage' : 'main',
+      status: 'active'
+    })),
+    customers: customers.map((c, index) => ({
+      id: uuidFromString(`customer:${c.id || c.name}`),
+      tenant_id: TENANT_ID,
+      customer_no: c.customerNo || c.id || `CUS-${String(index + 1).padStart(4, '0')}`,
+      name: c.name || 'Unnamed Customer',
+      email: c.email || '',
+      phone: c.phone || '',
+      city: c.city || c.county || '',
+      type: c.type || 'Farm',
+      tax_id: c.taxId || c.tax_id || '',
+      credit_limit: num(c.creditLimit),
+      balance: num(c.balance),
+      health_score: num(c.healthScore || 100),
+      status: statusText(c.status, 'active'),
+      updated_at: new Date().toISOString()
+    })),
+    suppliers: suppliers.map((s, index) => ({
+      id: uuidFromString(`supplier:${s.id || s.name}`),
+      tenant_id: TENANT_ID,
+      supplier_no: s.supplierNo || s.id || `SUP-${String(index + 1).padStart(4, '0')}`,
+      name: s.name || 'Unnamed Supplier',
+      email: s.email || '',
+      phone: s.phone || '',
+      category: s.category || '',
+      payment_terms: s.paymentTerms || 'Net 30',
+      on_time_rate: num(s.onTimeDelivery || s.onTimeRate),
+      delivery_rate: num(s.deliveryRate),
+      status: statusText(s.status, 'active'),
+      updated_at: new Date().toISOString()
+    })),
+    products: products.map((p, index) => ({
+      id: uuidFromString(`product:${p.id || p.sku || p.name}`),
+      tenant_id: TENANT_ID,
+      sku: p.sku || `SKU-${String(index + 1).padStart(4, '0')}`,
+      name: p.name || 'Unnamed Product',
+      category: p.category || 'General',
+      type: statusText(p.type, 'finished_good'),
+      unit: p.unit || 'unit',
+      cost_price: num(p.costPrice),
+      selling_price: num(p.sellingPrice),
+      tax_rate: num(p.taxRate || 16),
+      min_stock: num(p.minStock),
+      reorder_qty: num(p.reorderQty || p.minStock),
+      valuation_method: p.valuationMethod || 'FIFO',
+      is_manufactured: /finished|manufact/i.test(`${p.type} ${p.category}`),
+      status: statusText(p.status, 'active'),
+      updated_at: new Date().toISOString()
+    })),
+    inventory_items: inventory.map((i, index) => {
+      const p = productByName.get(i.productName) || {};
+      return {
+        id: uuidFromString(`inventory:${i.id || i.productName}:${i.warehouseName}:${i.batchNo || index}`),
+        tenant_id: TENANT_ID,
+        product_id: uuidFromString(`product:${i.productId || p.id || p.sku || i.productName}`),
+        warehouse_id: uuidFromString(`warehouse:${i.warehouseName || 'Main Store Nairobi'}`),
+        sku: i.sku || p.sku || '',
+        product_name: i.productName || 'Unknown Product',
+        category: p.category || i.category || 'General',
+        batch_no: i.batchNo || '',
+        quantity_available: num(i.quantity || i.quantityAvailable),
+        quantity_reserved: num(i.quantityReserved),
+        quantity_incoming: num(i.quantityIncoming),
+        quantity_outgoing: num(i.quantityOutgoing),
+        reorder_level: num(i.minStock || p.minStock),
+        reorder_point: num(i.reorderPoint || p.minStock),
+        unit_cost: num(i.unitCost || p.costPrice),
+        selling_price: num(i.sellingPrice || p.sellingPrice),
+        valuation_method: i.valuationMethod || p.valuationMethod || 'FIFO',
+        expiry_date: i.expiryDate || null,
+        last_movement_at: i.updatedAt || i.lastMovementDate || new Date().toISOString(),
+        status: statusText(i.status, 'in_stock'),
+        updated_at: new Date().toISOString()
+      };
+    }),
+    sales_orders: sales.map((s, index) => {
+      const customer = customers.find(c => c.id === s.customerId) || customerByName.get(s.customerName) || {};
+      return {
+        id: uuidFromString(`sale:${s.id || s.saleNo || index}`),
+        tenant_id: TENANT_ID,
+        order_no: s.saleNo || `SALE-${String(index + 1).padStart(5, '0')}`,
+        customer_id: uuidFromString(`customer:${customer.id || s.customerId || s.customerName}`),
+        status: statusText(s.status, 'draft'),
+        subtotal: num(s.subtotal),
+        tax: num(s.tax),
+        total: num(s.total),
+        paid: num(s.paid),
+        balance: num(s.balance),
+        created_by: uuidFromString(`profile:${s.createdBy || users[0]?.id || users[0]?.email || 'system'}`),
+        created_at: s.createdAt || s.date || new Date().toISOString(),
+        updated_at: s.updatedAt || new Date().toISOString()
+      };
+    }),
+    sales_order_items: saleItems.map((item, index) => ({
+      id: uuidFromString(`sale-item:${item.id || item.saleId}:${item.productName}:${index}`),
+      tenant_id: TENANT_ID,
+      sales_order_id: uuidFromString(`sale:${item.saleId || item.salesOrderId || 'unknown'}`),
+      product_id: uuidFromString(`product:${item.productId || productByName.get(item.productName)?.id || productByName.get(item.productName)?.sku || item.productName}`),
+      quantity: num(item.quantity),
+      reserved_quantity: num(item.reservedQuantity),
+      unit_price: num(item.unitPrice),
+      unit_cost: num(item.cost || item.unitCost)
+    })).filter(x => x.quantity > 0),
+    invoices: invoices.map((inv, index) => {
+      const customer = customers.find(c => c.id === inv.customerId) || customerByName.get(inv.customerName) || {};
+      return {
+        id: uuidFromString(`invoice:${inv.id || inv.invNo || index}`),
+        tenant_id: TENANT_ID,
+        invoice_no: inv.invNo || inv.invoiceNo || `INV-${String(index + 1).padStart(5, '0')}`,
+        customer_id: uuidFromString(`customer:${customer.id || inv.customerId || inv.customerName}`),
+        sales_order_id: inv.saleId ? uuidFromString(`sale:${inv.saleId}`) : null,
+        status: statusText(inv.status, 'unpaid'),
+        subtotal: num(inv.subtotal),
+        tax: num(inv.tax),
+        total: num(inv.total),
+        paid: num(inv.paid),
+        balance: num(inv.balance),
+        due_date: inv.dueDate || null,
+        created_at: inv.createdAt || inv.date || new Date().toISOString(),
+        updated_at: inv.updatedAt || new Date().toISOString()
+      };
+    }),
+    payments: payments.map((pay, index) => {
+      const customer = customers.find(c => c.id === pay.customerId) || customerByName.get(pay.customerName) || {};
+      return {
+        id: uuidFromString(`payment:${pay.id || pay.paymentNo || index}`),
+        tenant_id: TENANT_ID,
+        payment_no: pay.paymentNo || `PAY-${String(index + 1).padStart(5, '0')}`,
+        customer_id: pay.customerId || pay.customerName ? uuidFromString(`customer:${customer.id || pay.customerId || pay.customerName}`) : null,
+        invoice_id: pay.referenceId ? uuidFromString(`invoice:${pay.referenceId}`) : null,
+        amount: num(pay.amount),
+        method: pay.method || 'cash',
+        status: statusText(pay.status, 'completed'),
+        created_at: pay.createdAt || pay.date || new Date().toISOString()
+      };
+    }).filter(x => x.amount > 0),
+    purchase_orders: purchaseOrders.map((po, index) => ({
+      id: uuidFromString(`po:${po.id || po.poNo || index}`),
+      tenant_id: TENANT_ID,
+      po_no: po.poNo || `PO-${String(index + 1).padStart(5, '0')}`,
+      supplier_id: po.supplierId || po.supplierName ? uuidFromString(`supplier:${po.supplierId || po.supplierName}`) : null,
+      status: statusText(po.status, 'draft'),
+      subtotal: num(po.subtotal),
+      tax: num(po.tax),
+      total: num(po.total),
+      expected_date: po.expectedDate || null,
+      created_at: po.createdAt || po.date || new Date().toISOString(),
+      updated_at: po.updatedAt || new Date().toISOString()
+    })),
+    production_jobs: productionJobs.map((job, index) => ({
+      id: uuidFromString(`production:${job.id || job.orderNo || job.jobNo || index}`),
+      tenant_id: TENANT_ID,
+      job_no: job.orderNo || job.jobNo || `PJ-${String(index + 1).padStart(5, '0')}`,
+      product_id: uuidFromString(`product:${job.productId || productByName.get(job.productName)?.id || productByName.get(job.productName)?.sku || job.productName}`),
+      planned_qty: num(job.plannedQty),
+      completed_qty: num(job.completedQty),
+      wastage_qty: num(job.wastageQty),
+      status: statusText(job.status, 'pending'),
+      material_cost: num(job.materialCost),
+      created_at: job.createdAt || new Date().toISOString(),
+      updated_at: job.updatedAt || new Date().toISOString()
+    })).filter(x => x.product_id),
+    journal_entries: journalEntries.map((entry, index) => ({
+      id: uuidFromString(`journal:${entry.id || entry.journalNo || index}`),
+      tenant_id: TENANT_ID,
+      journal_no: entry.journalNo || entry.entryNo || `JE-${String(index + 1).padStart(5, '0')}`,
+      journal_date: entry.date || today(),
+      description: entry.description || entry.memo || 'ERP journal',
+      source_module: entry.sourceModule || '',
+      reference: entry.reference || '',
+      total_debit: num(entry.totalDebit),
+      total_credit: num(entry.totalCredit),
+      approval_status: entry.approvalStatus || 'posted',
+      posted_by: uuidFromString(`profile:${users[0]?.id || users[0]?.email || 'system'}`),
+      immutable: true,
+      created_at: entry.createdAt || new Date().toISOString()
+    })).filter(x => Math.round(x.total_debit) === Math.round(x.total_credit)),
+    business_events: (d.businessEvents || []).map((event, index) => ({
+      id: uuidFromString(`event:${event.id || index}`),
+      tenant_id: TENANT_ID,
+      event_type: event.eventType || 'erp.event',
+      entity_type: event.aggregateType || 'erp',
+      entity_id: event.aggregateId ? uuidFromString(`entity:${event.aggregateId}`) : null,
+      actor_id: event.createdBy ? uuidFromString(`profile:${event.createdBy}`) : null,
+      payload: event.payload || {},
+      created_at: event.createdAt || new Date().toISOString()
+    }))
+  };
+}
+
+let normalizedSyncRunning = false;
+let normalizedSyncSummary = null;
+
+async function syncNormalizedSupabase(options = {}) {
+  if (!supabaseEnabled() || normalizedSyncRunning) return normalizedSyncSummary || { attempted: false, reason: 'Supabase unavailable or sync already running' };
+  const status = await getNormalizedSupabaseStatus();
+  if (!status.ready) {
+    normalizedSyncSummary = { attempted: false, ready: false, missingTables: status.missingTables, synced: {}, errors: [] };
+    if (!options.silent) throw new Error(`Normalized Supabase schema is missing: ${status.missingTables.join(', ')}`);
+    return normalizedSyncSummary;
+  }
+  normalizedSyncRunning = true;
+  const rows = normalizedRows();
+  const plan = [
+    ['tenants', rows.tenants, 'slug'],
+    ['profiles', rows.profiles, 'tenant_id,email'],
+    ['warehouses', rows.warehouses, 'tenant_id,code'],
+    ['customers', rows.customers, 'tenant_id,customer_no'],
+    ['suppliers', rows.suppliers, 'tenant_id,supplier_no'],
+    ['products', rows.products, 'tenant_id,sku'],
+    ['inventory_items', rows.inventory_items, 'id'],
+    ['sales_orders', rows.sales_orders, 'tenant_id,order_no'],
+    ['sales_order_items', rows.sales_order_items, 'id'],
+    ['invoices', rows.invoices, 'tenant_id,invoice_no'],
+    ['payments', rows.payments, 'tenant_id,payment_no'],
+    ['purchase_orders', rows.purchase_orders, 'tenant_id,po_no'],
+    ['production_jobs', rows.production_jobs, 'id'],
+    ['journal_entries', rows.journal_entries, 'tenant_id,journal_no'],
+    ['business_events', rows.business_events, 'id']
+  ];
+  const synced = {};
+  const errors = [];
+  try {
+    for (const [table, tableRows, conflict] of plan) {
+      try {
+        const result = await supabaseUpsert(table, tableRows, conflict);
+        synced[table] = result.length || tableRows.length;
+      } catch (e) {
+        errors.push({ table, message: e.message });
+      }
+    }
+    normalizedSyncSummary = { attempted: true, ready: true, synced, errors, syncedAt: new Date().toISOString() };
+    if (errors.length && !options.silent) throw new Error(`Normalized sync finished with errors: ${errors.map(e => `${e.table}: ${e.message}`).join('; ')}`);
+    return normalizedSyncSummary;
+  } finally {
+    normalizedSyncRunning = false;
+  }
 }
 
 function seed() {
@@ -1242,6 +1592,36 @@ const api = {
   appHealth(user) {
     const d = data();
     return { ok: true, authOk: !!reqRole(user), persistence: supabaseReady ? 'supabase' : 'memory', users: d.users.length, customers: d.customers.length, products: d.products.length, sales: d.sales.length };
+  },
+  async getSupabaseIntegrationStatus(user) {
+    reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const normalized = await getNormalizedSupabaseStatus();
+    return {
+      bridge: {
+        enabled: supabaseEnabled(),
+        ready: supabaseReady === true,
+        table: 'erp_state',
+        stateId: STATE_ID
+      },
+      normalized,
+      lastNormalizedSync: normalizedSyncSummary,
+      pages: [
+        ['Dashboard', 'getDashboardData', normalized.ready ? 'normalized-sync-ready' : 'json-bridge'],
+        ['Analytics', 'getAnalyticsData/getAnalyticsTabData', normalized.ready ? 'materialized-view-ready' : 'json-bridge-fallback'],
+        ['CRM', 'getCRMWorkspaceData/saveCustomer/saveLead/saveCall', normalized.ready ? 'customers/leads/calls-ready' : 'json-bridge'],
+        ['Sales', 'getSalesWorkspaceData/createSalesOrder/confirmSalesDelivery', normalized.ready ? 'sales_orders/invoices/payments-ready' : 'json-bridge'],
+        ['Inventory', 'getInventoryWorkspaceData/adjustInventory/transferInventory', normalized.ready ? 'inventory_items/transactions-ready' : 'json-bridge'],
+        ['Purchases', 'getProcurementWorkspaceData', normalized.ready ? 'purchase_orders/suppliers-ready' : 'json-bridge'],
+        ['Manufacturing', 'getManufacturingWorkspaceData', normalized.ready ? 'production_jobs-ready' : 'json-bridge'],
+        ['Finance/Accounts', 'getFinanceWorkspaceData/postManualJournal', normalized.ready ? 'journal_entries/payments-ready' : 'json-bridge'],
+        ['Reports', 'getReportCenterData/generateReportExport', normalized.ready ? 'normalized-records-ready' : 'json-bridge'],
+        ['Settings', 'getSettingsWorkspaceData/saveSettingsSection', normalized.ready ? 'profiles/preferences-ready' : 'json-bridge']
+      ].map(([page, interactions, mode]) => ({ page, interactions, mode }))
+    };
+  },
+  async syncSupabaseNormalized(user) {
+    reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    return syncNormalizedSupabase({ silent: false });
   },
   getDashboardData(user) {
     const u = reqRole(user);

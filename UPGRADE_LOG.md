@@ -33,6 +33,38 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - Normalized Supabase Integration Layer
+
+Target area:
+Backend persistence, Supabase readiness checks, normalized table sync
+
+Reason:
+The ERP was connected to Supabase through `erp_state`, but every page needed a path toward full normalized Supabase tables and an exact diagnostic for missing schema pieces.
+
+Files changed:
+- `api/rpc.js`
+- `supabase-normalized-core.sql`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added safer Supabase REST request handling with clear missing-table errors.
+- Added deterministic UUID mapping so current ERP records can sync into UUID-based Supabase tables.
+- Added normalized mapping for tenants, profiles, customers, suppliers, products, warehouses, inventory items, sales orders, sales order items, invoices, payments, purchase orders, production jobs, journal entries, and business events.
+- Added automatic normalized sync after JSON bridge persistence when the normalized schema is available.
+- Added `getSupabaseIntegrationStatus` to show per-page integration mode and missing Supabase tables.
+- Added `syncSupabaseNormalized` to trigger a full core-record sync once `supabase-schema.sql` has been installed.
+- Added `supabase-normalized-core.sql`, a clean minimal schema matched to the live sync layer and analytics views.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+- Deployed to Vercel production.
+- Called `getSupabaseIntegrationStatus` live and confirmed `erp_state` bridge is connected.
+- Called `syncSupabaseNormalized` live and confirmed it reports missing normalized tables cleanly.
+
+Notes / next steps:
+- Full normalized sync requires the Supabase SQL schema to exist in the target database. REST service keys can upsert rows but cannot create missing tables.
+
 ## 2026-06-10 - Accounts Sidebar and Logo Polish
 
 Target area:
