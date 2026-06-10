@@ -33,6 +33,34 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - ERP Reliability Foundation Pass
+
+Target area:
+Backend validation, sales-to-inventory sync, operational integrity checks
+
+Reason:
+The ERP needed stronger guardrails so records entered from forms do not create stale, invalid, or disconnected data across sales, inventory, reports, analytics, and finance.
+
+Files changed:
+- `api/rpc.js`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added shared validation helpers for required fields and positive quantities.
+- Added backend validation for customers, suppliers, products, inventory, and users.
+- Blocked inventory adjustments and transfers that would create negative stock.
+- Added transfer-in and transfer-out inventory transaction records for stock movements.
+- Strengthened sales order creation so every line requires a product, quantity, price, and available stock.
+- Added automatic inventory deduction and sale-out transaction records when sales are saved.
+- Added `runERPIntegrityChecks` for admin/manager health checks across inventory, sales invoices, deliveries, journals, reports, and business events.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+
+Notes / next steps:
+- Continue expanding module-specific validation as each workspace receives deeper input workflows.
+
 ## 2026-06-10 - Sidebar Route Persistence and Report Declutter
 
 Target area:

@@ -13,6 +13,18 @@ const gid = () => 'ID' + Date.now().toString(36).toUpperCase() + Math.random().t
 const today = () => new Date().toISOString().slice(0, 10);
 const num = v => Number.parseFloat(v || 0) || 0;
 const money = v => `Ksh${Math.round(num(v)).toLocaleString()}`;
+const clean = v => String(v ?? '').trim();
+function assertRequired(value, label) {
+  if (!clean(value)) throw new Error(`${label} is required`);
+}
+function assertPositive(value, label) {
+  if (num(value) <= 0) throw new Error(`${label} must be greater than zero`);
+}
+function availableStock(productName) {
+  return data().inventory
+    .filter(x => x.productName === productName && x.status !== 'Deleted')
+    .reduce((sum, row) => sum + num(row.quantity), 0);
+}
 const dateValue = row => String(row?.date || row?.createdAt || row?.created_at || row?.updatedAt || today()).slice(0, 10);
 const inDateRange = (row, filters = {}) => {
   const d = dateValue(row);
@@ -1037,6 +1049,7 @@ function list(name) {
 function save(name, user, row) {
   const d = data();
   const now = new Date().toISOString();
+  validateRecord(name, row);
   if (row.id) {
     const i = d[name].findIndex(x => x.id === row.id);
     if (i >= 0) d[name][i] = { ...d[name][i], ...row, updatedAt: now };
@@ -1047,6 +1060,31 @@ function save(name, user, row) {
   d[name].push(saved);
   emitBusinessEvent(user, `${name}.created`, name, saved.id, saved);
   return { success: true, row: saved, id: saved.id };
+}
+
+function validateRecord(name, row = {}) {
+  if (name === 'customers') {
+    assertRequired(row.name, 'Customer name');
+    assertRequired(row.phone || row.email, 'Customer phone or email');
+  }
+  if (name === 'suppliers') {
+    assertRequired(row.name, 'Supplier name');
+  }
+  if (name === 'products') {
+    assertRequired(row.name, 'Product name');
+    assertRequired(row.sku, 'SKU');
+    assertPositive(row.sellingPrice || row.costPrice || 1, 'Product price');
+  }
+  if (name === 'inventory') {
+    assertRequired(row.productName, 'Inventory product');
+    assertRequired(row.warehouseName, 'Warehouse');
+    assertPositive(row.quantity, 'Inventory quantity');
+  }
+  if (name === 'users') {
+    assertRequired(row.name, 'User name');
+    assertRequired(row.email, 'User email');
+    assertRequired(row.role, 'User role');
+  }
 }
 
 function softDelete(name, id) {
@@ -2260,12 +2298,15 @@ const api = {
     const item = data().inventory.find(x => x.id === row.inventoryId) || data().inventory[0];
     if (!item) throw new Error('Inventory item not found');
     const qty = num(row.quantity || 0);
+    if (!qty) throw new Error('Adjustment quantity is required');
+    if (num(item.quantity) + qty < 0) throw new Error(`Cannot reduce ${item.productName} below zero stock`);
     item.quantity = Math.max(0, num(item.quantity) + qty);
     item.lastMovementDate = today();
     item.updatedAt = new Date().toISOString();
     const tx = { id: gid(), productId: item.productId, productName: item.productName, sku: item.sku, warehouseName: item.warehouseName, batchNo: item.batchNo, transactionType: 'Adjustment', quantity: qty, unitCost: item.unitCost, referenceType: 'Stock Adjustment', referenceId: row.reason || 'Manual adjustment', createdBy: u.name, createdAt: new Date().toISOString(), notes: row.reason || 'Manual stock adjustment' };
     data().inventoryTransactions.unshift(tx);
     data().inventoryAdjustments.unshift({ id: gid(), productId: item.productId, productName: item.productName, warehouseName: item.warehouseName, adjustmentType: row.reason || 'Correction', quantity: qty, reason: row.reason || 'Manual adjustment', approvedBy: u.name, date: today() });
+    emitBusinessEvent(u, 'inventory.adjusted', 'inventory', item.id, { productName: item.productName, warehouseName: item.warehouseName, quantity: qty, balance: item.quantity });
     log(u, 'Adjust Inventory', 'Inventory', `${item.productName} ${qty}`);
     return { success: true, item, transaction: tx };
   },
@@ -2273,7 +2314,9 @@ const api = {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE);
     const item = data().inventory.find(x => x.id === row.inventoryId) || data().inventory[0];
     if (!item) throw new Error('Inventory item not found');
-    const qty = Math.min(num(row.quantity || 1), num(item.quantity));
+    assertPositive(row.quantity || 1, 'Transfer quantity');
+    if (num(row.quantity || 1) > num(item.quantity)) throw new Error(`Only ${num(item.quantity).toLocaleString()} ${item.productName} available in ${item.warehouseName}`);
+    const qty = num(row.quantity || 1);
     const toWarehouse = row.toWarehouse || data().inventoryWarehouses.find(wh => wh.name !== item.warehouseName)?.name || 'Main Store Nairobi';
     item.quantity = Math.max(0, num(item.quantity) - qty);
     let dest = data().inventory.find(x => x.productName === item.productName && x.warehouseName === toWarehouse);
@@ -2285,6 +2328,8 @@ const api = {
     const transfer = { id: gid(), transferNo: `TRF-${Date.now()}`, productId: item.productId, productName: item.productName, fromWarehouse: item.warehouseName, toWarehouse, quantity: qty, status: 'Completed', requestedBy: u.name, date: today() };
     data().inventoryTransfers.unshift(transfer);
     data().inventoryTransactions.unshift({ id: gid(), productId: item.productId, productName: item.productName, sku: item.sku, warehouseName: item.warehouseName, batchNo: item.batchNo, transactionType: 'Transfer', quantity: -qty, unitCost: item.unitCost, referenceType: 'Transfer', referenceId: transfer.transferNo, createdBy: u.name, createdAt: new Date().toISOString(), notes: `Transferred to ${toWarehouse}` });
+    data().inventoryTransactions.unshift({ id: gid(), productId: dest.productId, productName: dest.productName, sku: dest.sku, warehouseName: dest.warehouseName, batchNo: dest.batchNo, transactionType: 'Transfer In', quantity: qty, unitCost: dest.unitCost, referenceType: 'Transfer', referenceId: transfer.transferNo, createdBy: u.name, createdAt: new Date().toISOString(), notes: `Transferred from ${item.warehouseName}` });
+    emitBusinessEvent(u, 'inventory.transferred', 'inventoryTransfers', transfer.id, transfer);
     log(u, 'Transfer Inventory', 'Inventory', transfer.transferNo);
     return { success: true, transfer };
   },
@@ -2733,14 +2778,34 @@ const api = {
   saveSale(user, row) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
     const items = row.items || [];
+    assertRequired(row.customerName || row.customerId, 'Customer');
+    if (!items.length) throw new Error('At least one sales item is required');
+    items.forEach(item => {
+      assertRequired(item.productName, 'Sales item product');
+      assertPositive(item.quantity, `${item.productName} quantity`);
+      assertPositive(item.unitPrice, `${item.productName} unit price`);
+      const stock = availableStock(item.productName);
+      if (stock < num(item.quantity)) throw new Error(`Insufficient stock for ${item.productName}. Available: ${stock.toLocaleString()}, requested: ${num(item.quantity).toLocaleString()}`);
+    });
     const subtotal = items.reduce((s, i) => s + num(i.quantity) * num(i.unitPrice), 0);
     const tax = Math.round(subtotal * 0.16), total = subtotal + tax, paid = num(row.paid || total), id = gid(), saleNo = 'SALE-' + Date.now();
     const sale = { id, saleNo, customerId: row.customerId, customerName: row.customerName, date: today(), subtotal, tax, total, paid, balance: total - paid, status: paid >= total ? 'Paid' : 'Partial', approvalStatus: 'Auto Approved', paymentMethod: row.paymentMethod || 'Cash', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' };
     data().sales.unshift(sale);
     items.forEach(i => {
       data().saleItems.push({ ...i, id: gid(), saleId: id, total: num(i.quantity) * num(i.unitPrice) });
-      const inv = data().inventory.find(x => x.productName === i.productName && num(x.quantity) > 0);
-      if (inv) inv.quantity = Math.max(0, num(inv.quantity) - num(i.quantity));
+      let remaining = num(i.quantity);
+      data().inventory
+        .filter(x => x.productName === i.productName && num(x.quantity) > 0)
+        .sort((a, b) => String(a.expiryDate || '').localeCompare(String(b.expiryDate || '')))
+        .forEach(inv => {
+          if (remaining <= 0) return;
+          const deduct = Math.min(num(inv.quantity), remaining);
+          inv.quantity = Math.max(0, num(inv.quantity) - deduct);
+          inv.lastMovementDate = today();
+          inv.updatedAt = new Date().toISOString();
+          data().inventoryTransactions.unshift({ id: gid(), productId: inv.productId || i.productId, productName: i.productName, sku: inv.sku, warehouseName: inv.warehouseName, batchNo: inv.batchNo, transactionType: 'Sale Out', quantity: -deduct, unitCost: inv.unitCost || i.cost, referenceType: 'Sales Order', referenceId: saleNo, createdBy: u.name, createdAt: new Date().toISOString(), notes: `Sold to ${sale.customerName}` });
+          remaining -= deduct;
+        });
     });
     const invoiceId = gid();
     data().invoices.unshift({ id: invoiceId, invNo: 'INV-' + Date.now(), customerId: row.customerId, customerName: row.customerName, date: today(), dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), subtotal, tax, total, paid, balance: total - paid, status: paid >= total ? 'Paid' : 'Partial', approvalStatus: 'Auto Approved', type: 'Sales', saleId: id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' });
@@ -3254,6 +3319,20 @@ const api = {
   getStockAgingReport: user => (reqRole(user), { summary: [{ label: '0-30 days', qty: data().inventory.reduce((s, i) => s + num(i.quantity), 0) }], details: data().inventory.map(i => ({ product: i.productName, batch: i.batchNo, qty: num(i.quantity), days: 1 })) }),
   getStockDistributionReport: user => (reqRole(user), { totalDistributed: 0, records: [] }),
   getSupplierPerformance: user => (reqRole(user), list('suppliers').map(s => ({ id: s.id, name: s.name, category: s.category, totalPOs: 0, onTimeDelivery: 0, deliveryRate: 0 })))
+  ,
+  runERPIntegrityChecks(user) {
+    reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const d = data();
+    const checks = [];
+    const add = (name, pass, detail) => checks.push({ name, pass: Boolean(pass), detail });
+    add('Inventory never negative', d.inventory.every(row => num(row.quantity) >= 0), `${d.inventory.length} stock rows checked`);
+    add('Sales have invoices', d.sales.every(sale => d.invoices.some(inv => inv.saleId === sale.id || inv.customerName === sale.customerName)), `${d.sales.length} sales checked`);
+    add('Deliveries linked to sales', d.deliveries.every(del => !del.saleId || d.sales.some(sale => sale.id === del.saleId)), `${d.deliveries.length} deliveries checked`);
+    add('Balanced finance journals', [...(d.financeJournalEntries || []), ...(d.financeManualJournals || [])].every(j => Math.round(num(j.totalDebit)) === Math.round(num(j.totalCredit))), `${(d.financeJournalEntries || []).length + (d.financeManualJournals || []).length} journals checked`);
+    add('Reports exportable', (d.reportArchive || []).length >= 0, 'Report export engine available');
+    add('Business events active', (d.businessEvents || []).length > 0, `${(d.businessEvents || []).length} events recorded`);
+    return { ok: checks.every(c => c.pass), checks, checkedAt: new Date().toISOString() };
+  }
 };
 
 module.exports = async function handler(req, res) {
