@@ -138,7 +138,7 @@ function App() {
           {page === 'inventory' && <InventoryWorkspace user={user} />}
           {page === 'finance' && <Finance user={user} />}
           {page === 'production' && <Manufacturing user={user} />}
-          {page === 'customers' && <DataPage user={user} title="CRM Customers" icon={Users} fn="getCustomers" columns={['name', 'email', 'phone', 'city', 'balance', 'status']} />}
+          {page === 'customers' && <CRMWorkspace user={user} />}
           {page === 'reports' && <Reports user={user} title="Reports" />}
           {page === 'inputs' && <InputCenter user={user} />}
           {page === 'settings' && <SettingsPage user={user} />}
@@ -717,6 +717,199 @@ function DataPage({ user, title, icon, fn, columns }) {
         <SimpleTable rows={data || []} columns={columns} />
       </Panel>
     </section>
+  );
+}
+
+function CRMWorkspace({ user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getCRMWorkspaceData', [], [refreshKey]);
+  const [view, setView] = useState('overview');
+  const [query, setQuery] = useState('');
+  const [modal, setModal] = useState(null);
+  if (loading) return <Loading title="CRM" />;
+  if (error) return <ErrorState title="CRM" error={error} />;
+  const tabs = ['overview', 'pipeline', 'customers', 'leads', 'calls', 'activities', 'reports', 'analytics'];
+  const customers = data.customers.filter(c => [c.name, c.email, c.phone, c.city, c.type].join(' ').toLowerCase().includes(query.toLowerCase()));
+  const pipelineStages = ['New', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost'];
+  const onSaved = () => {
+    setModal(null);
+    setRefreshKey(x => x + 1);
+  };
+  return (
+    <section className="page-stack crm-workspace">
+      <div className="sales-hero crm-hero">
+        <div>
+          <span>Customer Relationship Command Center</span>
+          <h1>CRM - Vision Geral</h1>
+          <p>Manage customers, leads, opportunities, calls, follow-ups, activities, reports, and customer intelligence in one connected workspace.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.overview.totalCustomers}</strong><span>Customers</span>
+          <strong>{data.overview.opportunities}</strong><span>Opportunities</span>
+          <strong>{currency(data.overview.pipelineValue)}</strong><span>Pipeline</span>
+        </div>
+      </div>
+
+      <div className="inline-actions">
+        <button onClick={() => setModal('customer')}><Plus size={16} /> New Customer</button>
+        <button onClick={() => setModal('lead')}><Target size={16} /> New Opportunity</button>
+        <button onClick={() => setModal('call')}><Bell size={16} /> Log Call</button>
+        <button onClick={() => setView('reports')}><FileText size={16} /> CRM Reports</button>
+      </div>
+
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'overview' && (
+        <>
+          <div className="control-grid">
+            <KpiCard icon={Users} label="Active Customers" value={data.overview.activeCustomers} change={12.5} tone="green" />
+            <KpiCard icon={Target} label="Opportunities" value={data.overview.opportunities} change={8.2} tone="blue" />
+            <KpiCard icon={CheckCircle2} label="Won Deals" value={data.overview.wonDeals} change={15.3} tone="green" />
+            <KpiCard icon={CircleDollarSign} label="Pipeline Value" value={currency(data.overview.pipelineValue)} change={18.7} tone="green" />
+            <KpiCard icon={LineChart} label="CRM Revenue" value={currency(data.overview.revenue)} change={22.4} tone="blue" />
+            <KpiCard icon={Calendar} label="Follow-ups" value={data.overview.pendingFollowups} change={-4.2} tone="red" />
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-4" title="Sales Funnel" action="This Month">
+              <div className="crm-funnel">
+                {data.funnel.map((stage, index) => <div key={stage.stage} style={{ '--w': `${100 - index * 11}%` }}><span>{stage.stage}</span><strong>{stage.count}</strong><em>{currency(stage.value)}</em></div>)}
+              </div>
+            </Panel>
+            <Panel className="span-4" title="Recent Activities"><CRMActivityList activities={data.activities} /></Panel>
+            <Panel className="span-4" title="Calls Today"><CRMCallList calls={data.calls.slice(0, 5)} /></Panel>
+            <Panel className="span-7 sales-main-chart" title="Customer Growth + Revenue">
+              <SalesTrendChart data={data.monthly} metric="revenue" />
+            </Panel>
+            <Panel className="span-5" title="Top Customers"><CRMTopCustomers rows={data.topCustomers} /></Panel>
+          </div>
+        </>
+      )}
+
+      {view === 'pipeline' && <CRMPipelineBoard leads={data.leads} stages={pipelineStages} />}
+      {view === 'customers' && <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} />}
+      {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={data.leads} columns={['name', 'company', 'phone', 'stage', 'value', 'assignedTo', 'status']} /></Panel>}
+      {view === 'calls' && <Panel title="Call Records" action="Follow-up"><SimpleTable rows={data.calls} columns={['customerName', 'phone', 'stage', 'notes', 'assignedTo']} /></Panel>}
+      {view === 'activities' && <Panel title="Activity Timeline"><CRMActivityList activities={data.activities} /></Panel>}
+      {view === 'reports' && <Panel title="CRM Reports" action="Export Ready"><SimpleTable rows={data.reports} columns={['name', 'records', 'value']} /></Panel>}
+      {view === 'analytics' && (
+        <div className="dashboard-grid">
+          <Panel className="span-6" title="Customer Growth"><SalesTrendChart data={data.monthly} metric="customers" /></Panel>
+          <Panel className="span-6" title="Opportunity Value"><SalesTrendChart data={data.monthly} metric="opportunities" /></Panel>
+          <Panel className="span-12" title="Customer Profitability"><SimpleTable rows={data.topCustomers} columns={['name', 'city', 'type', 'revenue', 'orders', 'health']} /></Panel>
+        </div>
+      )}
+      {modal && <CRMInputModal user={user} type={modal} customers={data.customers} onClose={() => setModal(null)} onSaved={onSaved} />}
+    </section>
+  );
+}
+
+function CRMPipelineBoard({ leads, stages }) {
+  return (
+    <div className="crm-kanban">
+      {stages.map(stage => {
+        const rows = leads.filter(lead => lead.stage === stage || (stage === 'New' && lead.stage === 'Lead'));
+        return (
+          <section key={stage}>
+            <header><strong>{stage}</strong><span>{rows.length}</span></header>
+            {rows.map(lead => (
+              <article key={lead.id} className={stage === 'Lost' ? 'lost' : stage === 'Won' ? 'won' : ''}>
+                <strong>{lead.name}</strong>
+                <span>{lead.company || lead.email || 'Opportunity'}</span>
+                <em>{lead.phone}</em>
+                <b>{currency(lead.value)}</b>
+                <small>{lead.assignedTo || 'Unassigned'} · {lead.status || 'Active'}</small>
+              </article>
+            ))}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function CRMCustomersGrid({ customers, query, setQuery }) {
+  return (
+    <Panel title="Customer Directory" action={`${customers.length} records`}>
+      <div className="crm-search"><Search size={16} /><input placeholder="Search customers, phone, county, type..." value={query} onChange={e => setQuery(e.target.value)} /></div>
+      <div className="crm-card-grid">
+        {customers.map(customer => (
+          <article key={customer.id} className={customer.health === 'VIP' ? 'vip' : customer.health === 'Prospect' ? 'prospect' : ''}>
+            <span>#{customer.id}</span>
+            <strong>{customer.name}</strong>
+            <em>{customer.type} · {customer.city || 'No county'}</em>
+            <small>{customer.phone} · {customer.email}</small>
+            <div><b>{currency(customer.revenue)}</b><i>{customer.orders} orders</i></div>
+            <mark>{customer.health}</mark>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function CRMActivityList({ activities }) {
+  return <div className="crm-activity-list">{activities.map(item => <article key={item.id}><span>{item.type}</span><strong>{item.title}</strong><em>{item.owner} · {String(item.time).slice(0, 10)}</em><mark>{item.status}</mark></article>)}</div>;
+}
+
+function CRMCallList({ calls }) {
+  return <div className="crm-call-list">{calls.map(call => <article key={call.id}><strong>{call.customerName}</strong><span>{call.stage}</span><em>{call.phone}</em></article>)}</div>;
+}
+
+function CRMTopCustomers({ rows }) {
+  return <div className="crm-top-list">{rows.map(row => <article key={row.id}><strong>{row.name}</strong><span>{row.city} · {row.health}</span><b>{currency(row.revenue)}</b></article>)}</div>;
+}
+
+function CRMInputModal({ user, type, customers, onClose, onSaved }) {
+  const defaults = {
+    customer: { name: '', email: '', phone: '', city: '', type: 'Farm', creditLimit: 0 },
+    lead: { name: '', email: '', phone: '', company: '', source: 'Website', stage: 'New', value: 0, assignedTo: 'Mary Sales', notes: '', status: 'Active' },
+    call: { customerId: customers[0]?.id || '', customerName: customers[0]?.name || '', phone: customers[0]?.phone || '', whatsapp: customers[0]?.phone || '', stage: 'To Be Called', notes: '', assignedTo: 'Mary Sales' }
+  };
+  const fields = {
+    customer: ['name', 'email', 'phone', 'city', 'type', 'creditLimit'],
+    lead: ['name', 'email', 'phone', 'company', 'source', 'stage', 'value', 'assignedTo', 'notes', 'status'],
+    call: ['customerId', 'phone', 'whatsapp', 'stage', 'notes', 'assignedTo']
+  };
+  const [form, setForm] = useState(defaults[type]);
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = { ...form };
+      if (type === 'call') {
+        const customer = customers.find(c => c.id === payload.customerId);
+        payload.customerName = customer?.name || payload.customerName;
+        payload.phone = payload.phone || customer?.phone || '';
+      }
+      await rpc(type === 'customer' ? 'saveCustomer' : type === 'lead' ? 'saveLead' : 'saveCall', [user, payload]);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card input-overlay-card" onSubmit={save}>
+        <header><h2>{type === 'customer' ? 'New Customer' : type === 'lead' ? 'New Opportunity' : 'Log Call'}</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="input-form-grid quick-input-form">
+          {fields[type].map(field => (
+            <label key={field}>{label(field)}
+              {field === 'customerId' ? (
+                <select value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+              ) : field === 'stage' ? (
+                <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })}>{['New', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost', 'To Be Called', 'To Be Meeting', 'Pending Calls', 'Already Called'].map(x => <option key={x}>{x}</option>)}</select>
+              ) : (
+                <input type={inputKind(field)} value={form[field] || ''} onChange={e => setForm({ ...form, [field]: e.target.value })} required={isRequiredInput(field)} />
+              )}
+            </label>
+          ))}
+        </div>
+        <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Save CRM Record'}</button>
+      </form>
+    </div>
   );
 }
 

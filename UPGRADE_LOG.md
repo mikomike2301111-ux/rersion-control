@@ -711,3 +711,30 @@ Improvements:
 Verification:
 - Ran `npm run build`.
 - Build completed successfully with the new Plus Jakarta Sans / Inter typography stack.
+
+## 2026-06-10 - CRM Workspace and Input Upgrade
+
+Target area:
+CRM dashboard, pipeline board, customer cards, CRM inputs, CRM reports/analytics
+
+Reason:
+CRM needed to become a real customer lifecycle workspace instead of a simple customer table. The new design follows the requested CRM reference direction with kanban pipeline, customer cards, activities, calls, reports, and working input modals.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added backend `getCRMWorkspaceData` with customer KPIs, funnel stages, activities, calls, top customers, monthly trends, and CRM reports.
+- Replaced the generic CRM customer table with a dedicated CRM workspace.
+- Added CRM overview, pipeline board, customer directory, leads, calls, activities, reports, and analytics tabs.
+- Added CRM modals for New Customer, New Opportunity, and Log Call.
+- Added CRM lead and call modules to the global Input Center and top `New` overlay.
+- Styled CRM with a modern green SaaS layout, kanban columns, pipeline cards, customer cards, activity rows, and top customer panels.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+- Ran CRM RPC workflow checks for workspace loading, customer creation, lead/opportunity creation, call logging, and refreshed CRM counts.

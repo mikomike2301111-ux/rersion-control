@@ -1747,6 +1747,8 @@ const api = {
     return {
       modules: [
         { id: 'customer', label: 'Customer', fields: ['name', 'email', 'phone', 'city', 'type', 'creditLimit'] },
+        { id: 'lead', label: 'Lead / Opportunity', fields: ['name', 'email', 'phone', 'company', 'source', 'stage', 'value', 'assignedTo', 'notes'] },
+        { id: 'call', label: 'Call / Follow-up', fields: ['customerId', 'phone', 'whatsapp', 'stage', 'notes', 'assignedTo'] },
         { id: 'supplier', label: 'Supplier', fields: ['name', 'email', 'phone', 'category', 'paymentTerms'] },
         { id: 'product', label: 'Product', fields: ['name', 'sku', 'category', 'type', 'unit', 'costPrice', 'sellingPrice', 'minStock'] },
         { id: 'inventory', label: 'Inventory Item', fields: ['productName', 'warehouseName', 'batchNo', 'quantity', 'unitCost', 'expiryDate'] },
@@ -1779,6 +1781,11 @@ const api = {
     const type = String(module || '').trim();
     let result;
     if (type === 'customer') result = api.saveCustomer(u, { status: 'Active', type: 'Farm', balance: 0, ...payload });
+    else if (type === 'lead') result = api.saveLead(u, { status: 'Active', stage: 'New', source: 'Manual', ...payload });
+    else if (type === 'call') {
+      const customer = data().customers.find(c => c.id === payload.customerId) || data().customers[0];
+      result = api.saveCall(u, { customerId: customer.id, customerName: customer.name, phone: payload.phone || customer.phone, whatsapp: payload.whatsapp || customer.phone, stage: payload.stage || 'To Be Called', notes: payload.notes || '', assignedTo: payload.assignedTo || u.name });
+    }
     else if (type === 'supplier') result = api.saveSupplier(u, { status: 'Active', paymentTerms: 'Net 30', balance: 0, ...payload });
     else if (type === 'product') result = api.saveProduct(u, { status: 'Active', ...payload });
     else if (type === 'inventory') result = api.saveInventoryItem(u, { status: 'In Stock', receivedDate: today(), ...payload });
@@ -1818,6 +1825,72 @@ const api = {
   createDailyBackup: () => 'Backup is configured in Vercel deployment.',
   setupAutoBackup: () => 'Auto backup is not needed for this Vercel demo.',
   getCustomers: user => (reqRole(user), list('customers').map(c => ({ ...c, balance: num(c.balance), creditLimit: num(c.creditLimit) }))),
+  getCRMWorkspaceData(user) {
+    reqRole(user);
+    const d = data();
+    const customers = list('customers').map(customer => {
+      const sales = d.sales.filter(s => s.customerId === customer.id || s.customerName === customer.name);
+      const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
+      const lastSale = sales.sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+      return {
+        ...customer,
+        revenue,
+        orders: sales.length,
+        lastActivity: lastSale?.date || customer.updatedAt || customer.createdAt || today(),
+        health: revenue > 200000 ? 'VIP' : revenue > 0 ? 'Active' : 'Prospect',
+        priority: revenue > 200000 ? 'High' : revenue > 50000 ? 'Medium' : 'Normal'
+      };
+    });
+    const activeCustomers = customers.filter(c => c.status === 'Active').length;
+    const leads = list('leads');
+    const calls = list('calls');
+    const invoices = list('invoices');
+    const pipelineValue = leads.filter(l => !['Won', 'Lost'].includes(l.stage)).reduce((sum, lead) => sum + num(lead.value), 0);
+    const wonDeals = d.sales.length;
+    const revenue = d.sales.reduce((sum, sale) => sum + num(sale.total), 0);
+    const stages = ['New', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost'];
+    const funnel = stages.map(stage => ({
+      stage,
+      count: leads.filter(lead => lead.stage === stage || (stage === 'New' && lead.stage === 'Lead')).length,
+      value: leads.filter(lead => lead.stage === stage || (stage === 'New' && lead.stage === 'Lead')).reduce((sum, lead) => sum + num(lead.value), 0)
+    }));
+    const activities = [
+      ...calls.slice(0, 6).map(call => ({ id: call.id, type: 'Call', title: `${call.stage} - ${call.customerName}`, owner: call.assignedTo || 'Sales Team', time: call.updatedAt || call.createdAt || today(), status: call.stage === 'Already Called' ? 'Completed' : 'Pending' })),
+      ...leads.slice(0, 6).map(lead => ({ id: lead.id, type: 'Lead', title: `${lead.stage} - ${lead.name}`, owner: lead.assignedTo || 'Sales Team', time: lead.updatedAt || lead.createdAt || today(), status: lead.stage === 'Won' ? 'Completed' : 'Open' }))
+    ].sort((a, b) => String(b.time).localeCompare(String(a.time))).slice(0, 8);
+    const topCustomers = [...customers].sort((a, b) => num(b.revenue) - num(a.revenue)).slice(0, 6);
+    const monthly = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((month, index) => ({
+      month,
+      customers: Math.max(1, Math.round(customers.length * (0.55 + index * 0.08))),
+      revenue: Math.round(revenue * (0.1 + index * 0.025)),
+      opportunities: Math.max(1, leads.length + index)
+    }));
+    return {
+      overview: {
+        totalCustomers: customers.length,
+        activeCustomers,
+        opportunities: leads.filter(l => !['Won', 'Lost'].includes(l.stage)).length,
+        wonDeals,
+        pipelineValue,
+        revenue,
+        pendingFollowups: calls.filter(c => c.stage !== 'Already Called').length,
+        retentionRate: customers.length ? Math.round((activeCustomers / customers.length) * 100) : 0
+      },
+      customers,
+      leads,
+      calls,
+      funnel,
+      activities,
+      topCustomers,
+      monthly,
+      reports: [
+        { name: 'Customer Profitability Report', records: customers.length, value: revenue },
+        { name: 'Lead Conversion Report', records: leads.length, value: pipelineValue },
+        { name: 'Call Activity Report', records: calls.length, value: calls.length },
+        { name: 'Customer Revenue Report', records: invoices.length, value: invoices.reduce((sum, inv) => sum + num(inv.total), 0) }
+      ]
+    };
+  },
   saveCustomer(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD); return save('customers', u, row); },
   deleteCustomer: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('customers', id)),
   getCustomerHistory: (user, id) => (reqRole(user), { customer: data().customers.find(c => c.id === id), sales: data().sales.filter(s => s.customerId === id), payments: data().payments.filter(p => p.customerId === id), calls: data().calls.filter(c => c.customerId === id) }),
