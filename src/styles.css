@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
 * { box-sizing: border-box; }
 :root {
   --black: #030405;
@@ -14,7 +16,7 @@ body {
   margin: 0;
   background: #fff;
   color: var(--text);
-  font-family: Aptos, "Segoe UI Variable", "Segoe UI", Candara, Arial, sans-serif;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
   font-weight: 500;
 }
 button, input, select, textarea { font: inherit; }
@@ -673,15 +675,29 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
   .modal-grid { grid-template-columns: 1fr; }
 }
 
-/* Soft UI typography pass: keep layout intact, strengthen thin captions/table/form text. */
+/* High-end SaaS typography: Plus Jakarta Sans headings, Inter body and numbers. */
 body,
 button,
 input,
 select,
 textarea {
-  font-family: Aptos, "Segoe UI Variable", "Segoe UI", Candara, Arial, sans-serif;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
 }
 body { font-weight: 500; }
+h1,
+h2,
+h3,
+.page-title h1,
+.command-hero h1,
+.analytics-hero h1,
+.sales-hero h1,
+.panel h2,
+.modal-card h2,
+.brand-lockup h1,
+.sidebar-brand span {
+  font-family: "Plus Jakarta Sans", Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  font-weight: 800;
+}
 .sidebar-brand span,
 th,
 td,
@@ -755,7 +771,7 @@ em,
   font-weight: 700;
 }
 
-/* Numeric values keep the previous Bahnschrift feel while text uses the softer UI stack. */
+/* Numeric values use Inter with tabular figures for clean ERP/KPI alignment. */
 .kpi-card h3,
 .sales-hero-stats strong,
 .change,
@@ -781,7 +797,7 @@ em,
 .product-list b,
 td,
 option {
-  font-family: Bahnschrift, "Bahnschrift SemiCondensed", "Segoe UI", Arial, sans-serif;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
   font-variant-numeric: tabular-nums;
 }
 

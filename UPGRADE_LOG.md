@@ -689,3 +689,25 @@ Verification:
 - Ran `npm run build`.
 - Ran RPC workflow checks for login, input metadata, raw material receipt, sales order creation, analytics weekly filtering, and report CSV export.
 - Local HTTP check returned `200` from `http://127.0.0.1:5173`.
+
+## 2026-06-10 - Enterprise SaaS Typography Upgrade
+
+Target area:
+Global typography, headings, body text, numeric/KPI values
+
+Reason:
+The ERP needed a more polished high-end SaaS typography system. The selected stack is Plus Jakarta Sans for headings and Inter for body text and numbers.
+
+Files changed:
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added Google Fonts import for Plus Jakarta Sans and Inter.
+- Changed body, controls, forms, and tables to Inter.
+- Changed headings, hero titles, panel titles, modal titles, and brand headings to Plus Jakarta Sans.
+- Changed numeric/KPI values from Bahnschrift to Inter with tabular figures for clean alignment.
+
+Verification:
+- Ran `npm run build`.
+- Build completed successfully with the new Plus Jakarta Sans / Inter typography stack.
