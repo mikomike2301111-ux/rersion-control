@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
+  Activity,
   BarChart3,
   Bell,
   Boxes,
@@ -25,6 +26,7 @@ import {
   Package,
   Plus,
   ReceiptText,
+  RefreshCw,
   Route,
   Search,
   Settings,
@@ -2820,7 +2822,7 @@ function InputCenter({ user }) {
 }
 
 function SettingsPage({ user }) {
-  const tabs = ['company', 'users', 'permissions', 'departments', 'warehouses', 'products', 'manufacturing', 'procurement', 'inventory', 'sales', 'finance', 'tax', 'notifications', 'templates', 'automation', 'integrations', 'audit', 'security', 'backup', 'data', 'api', 'health', 'advanced'];
+  const tabs = ['company', 'users', 'permissions', 'departments', 'warehouses', 'products', 'manufacturing', 'procurement', 'inventory', 'sales', 'finance', 'tax', 'notifications', 'templates', 'automation', 'integrations', 'supabase', 'audit', 'security', 'backup', 'data', 'api', 'health', 'advanced'];
   const [view, setView] = useRouteTab('settings', tabs, 'company');
   const [refreshKey, setRefreshKey] = useState(0);
   const [companyForm, setCompanyForm] = useState({});
@@ -2928,6 +2930,7 @@ function SettingsPage({ user }) {
       {view === 'templates' && <SettingsTable title="Document Templates" rows={data.documentTemplates} columns={['name', 'version', 'status']} />}
       {view === 'automation' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Workflow Automation" items={['Sales quote approval', 'Purchase order approval', 'Production start material reservation', 'Delivery confirmation workflow', 'Finance posting automation', 'Low stock alerts']} />}
       {view === 'integrations' && <SettingsTable title="Integrations" rows={data.integrations} columns={['name', 'status', 'detail']} />}
+      {view === 'supabase' && <SupabaseIntegrationPanel user={user} />}
       {view === 'audit' && (
         <div className="dashboard-grid">
           <Panel className="span-6" title="Recent Audit Trail"><SimpleTable rows={data.recentAudit} columns={['userName', 'action', 'module', 'details', 'createdAt']} /></Panel>
@@ -2983,6 +2986,84 @@ function SettingsKeyValues({ title, data }) {
         {Object.entries(data || {}).map(([key, value]) => <article key={key}><span>{label(key)}</span><strong>{String(value)}</strong></article>)}
       </div>
     </Panel>
+  );
+}
+
+function SupabaseIntegrationPanel({ user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState('');
+  const { loading, data, error } = useServer(user, 'getSupabaseIntegrationStatus', [], [refreshKey]);
+  if (loading) return <Loading title="Supabase Integration" />;
+  if (error) return <ErrorState title="Supabase Integration" error={error} />;
+  const missingTables = data?.normalized?.missingTables || [];
+  const normalizedReady = !!data?.normalized?.ready;
+  const bridgeReady = !!data?.bridge?.ready;
+  const pages = data?.pages || [];
+  const totalSynced = data?.lastNormalizedSync?.synced
+    ? Object.values(data.lastNormalizedSync.synced).reduce((sum, value) => sum + Number(value || 0), 0)
+    : 0;
+
+  async function syncNow() {
+    setSyncing(true);
+    setMessage('');
+    try {
+      const result = await rpc('syncSupabaseNormalized', [user]);
+      const synced = Object.values(result?.synced || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      setMessage(`Normalized Supabase sync completed. ${synced.toLocaleString()} records were checked and written.`);
+      setRefreshKey(x => x + 1);
+    } catch (err) {
+      setMessage(err?.message || String(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="dashboard-grid supabase-workspace">
+      <Panel className="span-12" title="Supabase Connection" action={normalizedReady ? 'Normalized live' : bridgeReady ? 'Bridge live' : 'Needs setup'}>
+        <div className="supabase-actions">
+          <button onClick={() => setRefreshKey(x => x + 1)}><RefreshCw size={16} /> Refresh Status</button>
+          <button onClick={syncNow} disabled={syncing || !bridgeReady}><CheckCircle2 size={16} /> {syncing ? 'Syncing...' : 'Sync Normalized Tables'}</button>
+          <span>{data?.time ? `Checked ${new Date(data.time).toLocaleString()}` : 'Connection status ready'}</span>
+        </div>
+        {message && <div className={`supabase-message ${message.toLowerCase().includes('missing') || message.toLowerCase().includes('error') ? 'warn' : ''}`}>{message}</div>}
+      </Panel>
+
+      <div className="span-12 supabase-status-grid">
+        <article className={bridgeReady ? 'ready' : 'warn'}>
+          <CheckCircle2 size={22} />
+          <span>JSON Bridge</span>
+          <strong>{bridgeReady ? 'Connected' : 'Not Connected'}</strong>
+          <em>{data?.bridge?.table || 'erp_state'} persistence table</em>
+        </article>
+        <article className={normalizedReady ? 'ready' : 'warn'}>
+          {normalizedReady ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
+          <span>Normalized Tables</span>
+          <strong>{normalizedReady ? 'Ready' : `${missingTables.length} Missing`}</strong>
+          <em>{normalizedReady ? 'Live row-level modules can sync' : 'Run supabase-normalized-core.sql first'}</em>
+        </article>
+        <article className={totalSynced ? 'ready' : 'neutral'}>
+          <Activity size={22} />
+          <span>Last Normalized Sync</span>
+          <strong>{totalSynced.toLocaleString()}</strong>
+          <em>records written during the last sync</em>
+        </article>
+      </div>
+
+      {!normalizedReady && (
+        <Panel className="span-5" title="Missing Supabase Tables" action={`${missingTables.length} required`}>
+          <div className="supabase-missing-list">
+            {missingTables.map(table => <span key={table}>{table}</span>)}
+          </div>
+          <p className="supabase-help">Open Supabase SQL Editor and run <strong>supabase-normalized-core.sql</strong>. After that, come back here and press <strong>Sync Normalized Tables</strong>.</p>
+        </Panel>
+      )}
+
+      <Panel className={normalizedReady ? 'span-12' : 'span-7'} title="Page Integration Map" action={`${pages.length} workspaces`}>
+        <SimpleTable rows={pages} columns={['page', 'interactions', 'mode']} />
+      </Panel>
+    </div>
   );
 }
 

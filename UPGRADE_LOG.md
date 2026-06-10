@@ -33,6 +33,32 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - Supabase Settings Control Panel
+
+Target area:
+Settings workspace, Supabase diagnostics, normalized sync operations
+
+Reason:
+The ERP backend had Supabase bridge and normalized sync checks, but users needed a visible in-app place to confirm what is connected and what still needs schema setup.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added a Settings > Supabase tab with connection cards for the JSON bridge, normalized tables, and last normalized sync.
+- Added refresh and normalized-sync actions directly inside Settings.
+- Added a missing-table checklist that points to `supabase-normalized-core.sql` before full normalized sync.
+- Added a page integration map so Dashboard, Analytics, CRM, Sales, Inventory, Purchases, Manufacturing, Finance, Reports, and Settings show their current Supabase mode.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+
+Notes / next steps:
+- Full normalized mode still requires creating the missing tables in Supabase by running `supabase-normalized-core.sql` with database-owner privileges.
+
 ## 2026-06-10 - Normalized Supabase Integration Layer
 
 Target area:
