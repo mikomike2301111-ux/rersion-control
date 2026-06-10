@@ -1015,7 +1015,7 @@ select,
 textarea {
   font-family: var(--font-main);
 }
-body { font-weight: 500; }
+body { font-weight: 400; }
 h1,
 h2,
 h3,
@@ -1028,7 +1028,8 @@ h3,
 .brand-lockup h1,
 .sidebar-brand span {
   font-family: var(--font-main);
-  font-weight: 800;
+  font-weight: 650;
+  letter-spacing: 0;
 }
 code,
 pre,
@@ -1097,7 +1098,7 @@ em,
 .login-form span,
 .modal-card label {
   color: #344054;
-  font-weight: 700;
+  font-weight: 500;
 }
 .sidebar nav button,
 .topbar-actions button,
@@ -1106,20 +1107,20 @@ em,
 .report-action-grid button,
 .input-type-grid button,
 .primary-action {
-  font-weight: 900;
+  font-weight: 650;
 }
 .sales-hero span,
 .analytics-hero span,
 .command-hero span,
 .sidebar-user span {
   color: #d9dee8;
-  font-weight: 800;
+  font-weight: 550;
 }
 .sales-hero p,
 .analytics-hero p,
 .command-hero p {
   color: #eef2f6;
-  font-weight: 700;
+  font-weight: 450;
 }
 
 /* Numeric values use tabular figures for clean ERP/KPI alignment. */
@@ -1150,6 +1151,96 @@ td,
 option {
   font-family: var(--font-main);
   font-variant-numeric: tabular-nums;
+  font-weight: 560;
+}
+
+/* Softened typography pass: remove the heavy AI-generated bold look. */
+.sidebar-brand-text strong { font-weight: 650; }
+.sidebar-brand-text small { font-weight: 600; letter-spacing: .14em; }
+.page-title h1,
+.command-hero h1,
+.analytics-hero h1,
+.sales-hero h1 {
+  font-weight: 680;
+  letter-spacing: 0;
+}
+.panel h2,
+.modal-card h2,
+.settings-workspace .panel h2 {
+  font-weight: 620;
+  letter-spacing: 0;
+}
+.kpi-head strong,
+.attention-list strong,
+.action-list span,
+.forecast-card strong,
+.analytics-kpi-row strong,
+.waterfall strong,
+.customer-intelligence-list strong,
+.scorecards strong,
+.finance-health-strip strong,
+.finance-action-stack span,
+.finance-trial-card strong,
+.finance-control-list strong,
+.manufacturing-conversion strong,
+.production-order-list strong,
+.pipeline-board strong,
+.quote-workflow strong,
+.sales-report-grid strong,
+.county-products strong,
+.rep-comparison strong,
+.visit-timeline strong,
+.opportunity-list strong,
+.crm-card-grid article strong,
+.crm-kanban article strong,
+.settings-brand-preview strong,
+.settings-kv-grid strong {
+  font-weight: 600;
+}
+.kpi-card h3,
+.sales-hero-stats strong,
+.action-list strong,
+.analytics-kpi-row strong,
+.pipeline-board b,
+.sales-report-grid b,
+.county-score strong,
+.county-grid span,
+.crm-card-grid b,
+.finance-control-list strong {
+  font-weight: 650;
+}
+.change,
+.status,
+.badge,
+.report-filter-bar button,
+.report-action-grid button,
+.report-output-center button,
+.report-archive-list button,
+.report-library-list button,
+.report-template-toolbar > span,
+.report-search-box input,
+.report-template-grid span,
+.quick-input-modules button,
+.quick-input-result span,
+.production-order-list button,
+.metric-toggle button,
+.quote-workflow button,
+.sales-report-grid button,
+.territory-reports button,
+.map-legend span,
+.input-form-grid label,
+.report-filter-bar label,
+.modal-card label {
+  font-weight: 550;
+}
+th {
+  font-weight: 500;
+}
+td,
+input,
+select,
+textarea {
+  font-weight: 400;
 }
 
 @media (max-width: 900px) {

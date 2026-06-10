@@ -33,6 +33,29 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - Softer Typography Weight Pass
+
+Target area:
+Global UI typography
+
+Reason:
+Several labels, buttons, headings, and helper texts were too bold, making the ERP feel heavy and harder to scan.
+
+Files changed:
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Reduced body text from medium-heavy to regular weight.
+- Softened headings, panel titles, sidebar brand text, tabs, buttons, labels, badges, and report controls.
+- Kept KPI and numeric values readable with tabular figures and moderate emphasis.
+
+Verification:
+- Ran `npm run build`.
+
+Notes / next steps:
+- Review live pages visually and tune individual module weights if any specific area still feels too heavy.
+
 ## 2026-06-10 - ERP Reliability Foundation Pass
 
 Target area:
