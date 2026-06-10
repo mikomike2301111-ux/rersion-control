@@ -114,6 +114,28 @@ const pageFromRoute = () => {
   const page = routeAliases[raw] || raw;
   return nav.some(item => item.id === page) ? page : 'dashboard';
 };
+const routeParts = () => window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+const tabFromRoute = (tabs, fallback) => {
+  const sub = routeParts()[1];
+  return tabs.includes(sub) ? sub : fallback;
+};
+
+function useRouteTab(pageId, tabs, fallback) {
+  const [view, setViewState] = useState(() => tabFromRoute(tabs, fallback));
+  useEffect(() => {
+    const onHash = () => {
+      if (pageFromRoute() === pageId) setViewState(tabFromRoute(tabs, fallback));
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [pageId, tabs.join('|'), fallback]);
+  const setView = next => {
+    setViewState(next);
+    const route = routeForPage(pageId);
+    if (window.location.hash !== `#/${route}/${next}`) window.location.hash = `/${route}/${next}`;
+  };
+  return [view, setView];
+}
 
 function App() {
   const [user, setUser] = useState(() => {
@@ -363,7 +385,7 @@ function AnalyticsCenter({ user }) {
     ['ai', 'AI Intelligence'],
     ['forecasting', 'Forecasting']
   ];
-  const [activeTab, setActiveTab] = useState('revenue');
+  const [activeTab, setActiveTab] = useRouteTab('analytics', tabs.map(([id]) => id), 'revenue');
   const [tabFilters, setTabFilters] = useState({ revenue: { ...defaultReportDates(), period: 'Monthly' } });
   const tabState = useServer(user, 'getAnalyticsTabData', [activeTab, tabFilters[activeTab] || {}], [activeTab, JSON.stringify(tabFilters[activeTab] || {})]);
   if (loading) return <Loading title="Analytics" />;
@@ -739,14 +761,14 @@ function DataPage({ user, title, icon, fn, columns }) {
 }
 
 function CRMWorkspace({ user }) {
+  const tabs = ['overview', 'pipeline', 'customers', 'leads', 'calls', 'activities', 'reports', 'analytics'];
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getCRMWorkspaceData', [], [refreshKey]);
-  const [view, setView] = useState('overview');
+  const [view, setView] = useRouteTab('customers', tabs, 'overview');
   const [query, setQuery] = useState('');
   const [modal, setModal] = useState(null);
   if (loading) return <Loading title="CRM" />;
   if (error) return <ErrorState title="CRM" error={error} />;
-  const tabs = ['overview', 'pipeline', 'customers', 'leads', 'calls', 'activities', 'reports', 'analytics'];
   const customers = data.customers.filter(c => [c.name, c.email, c.phone, c.city, c.type].join(' ').toLowerCase().includes(query.toLowerCase()));
   const pipelineStages = ['New', 'Contacted', 'Proposal', 'Negotiation', 'Won', 'Lost'];
   const onSaved = () => {
@@ -933,9 +955,10 @@ function CRMInputModal({ user, type, customers, onClose, onSaved }) {
 }
 
 function InventoryWorkspace({ user }) {
+  const tabs = ['overview', 'stock', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai'];
   const [refreshKey, setRefreshKey] = useState(0);
   const workspace = useServer(user, 'getInventoryWorkspaceData', [], [refreshKey]);
-  const [view, setView] = useState('overview');
+  const [view, setView] = useRouteTab('inventory', tabs, 'overview');
   const [metric, setMetric] = useState('inventoryValue');
   const [query, setQuery] = useState('');
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -945,7 +968,6 @@ function InventoryWorkspace({ user }) {
   if (workspace.error) return <ErrorState title="Inventory" error={workspace.error} />;
 
   const data = workspace.data;
-  const tabs = ['overview', 'stock', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai'];
   const metrics = ['inventoryValue', 'incomingStock', 'outgoingStock', 'damagedStock', 'expiredStock', 'warehouseStock', 'stockTurnover', 'stockCosts'];
   const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
 
@@ -1163,8 +1185,9 @@ function InventoryTransferModal({ user, items, warehouses, onClose, onSaved }) {
 }
 
 function ProcurementWorkspace({ user }) {
+  const tabs = ['overview', 'requests', 'orders', 'suppliers', 'deliveries', 'receiving', 'credit', 'payables', 'reports', 'analytics', 'ai'];
   const workspace = useServer(user, 'getProcurementWorkspaceData');
-  const [view, setView] = useState('overview');
+  const [view, setView] = useRouteTab('purchasing', tabs, 'overview');
   const [metric, setMetric] = useState('spend');
   const [query, setQuery] = useState('');
 
@@ -1172,7 +1195,6 @@ function ProcurementWorkspace({ user }) {
   if (workspace.error) return <ErrorState title="Purchases" error={workspace.error} />;
 
   const data = workspace.data;
-  const tabs = ['overview', 'requests', 'orders', 'suppliers', 'deliveries', 'receiving', 'credit', 'payables', 'reports', 'analytics', 'ai'];
   const metrics = ['spend', 'deliveries', 'leadTime', 'supplierPerformance', 'creditPurchases', 'outstandingBalances', 'purchaseOrders', 'receivedGoods'];
   const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
 
@@ -1387,9 +1409,10 @@ function ProcurementAi({ insights }) {
 }
 
 function SalesModule({ user }) {
+  const tabs = ['overview', 'pipeline', 'quotes', 'orders', 'invoices', 'team', 'territory', 'reports', 'analytics', 'ai'];
   const [refreshKey, setRefreshKey] = useState(0);
   const workspace = useServer(user, 'getSalesWorkspaceData', [], [refreshKey]);
-  const [view, setView] = useState('overview');
+  const [view, setView] = useRouteTab('sales', tabs, 'overview');
   const [metric, setMetric] = useState('revenue');
   const [selectedCounty, setSelectedCounty] = useState('Nairobi');
   const [saleFormOpen, setSaleFormOpen] = useState(false);
@@ -1406,7 +1429,6 @@ function SalesModule({ user }) {
   const data = workspace.data;
   const territory = data.territory;
   const county = territory.counties.find(c => c.name === selectedCounty) || territory.counties[0];
-  const tabs = ['overview', 'pipeline', 'quotes', 'orders', 'invoices', 'team', 'territory', 'reports', 'analytics', 'ai'];
   const metrics = ['revenue', 'profit', 'customers', 'invoices', 'expenses', 'pipeline'];
 
   return (
@@ -1866,7 +1888,8 @@ function RouteList({ routes }) {
 }
 
 function Manufacturing({ user }) {
-  const [view, setView] = useState('dashboard');
+  const tabs = ['dashboard', 'materials', 'batches', 'formulas', 'orders', 'consumption', 'traceability', 'quality', 'capacity', 'calendar', 'downtime', 'documents', 'recalls', 'reports', 'ai'];
+  const [view, setView] = useRouteTab('production', tabs, 'dashboard');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1874,7 +1897,6 @@ function Manufacturing({ user }) {
   if (loading) return <Loading title="Manufacturing" />;
   if (error) return <ErrorState title="Manufacturing" error={error} />;
   const refresh = () => setRefreshKey(x => x + 1);
-  const tabs = ['dashboard', 'materials', 'batches', 'formulas', 'orders', 'consumption', 'traceability', 'quality', 'capacity', 'calendar', 'downtime', 'documents', 'recalls', 'reports', 'ai'];
   async function startOrder(id) {
     await rpc('startProductionOrder', [user, id]);
     refresh();
@@ -2033,7 +2055,8 @@ function ProductionOrderModal({ user, formulas, onClose, onSaved }) {
 }
 
 function Finance({ user }) {
-  const [view, setView] = useState('dashboard');
+  const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai'];
+  const [view, setView] = useRouteTab('finance', tabs, 'dashboard');
   const [metric, setMetric] = useState('profit');
   const [journalOpen, setJournalOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
@@ -2042,7 +2065,6 @@ function Finance({ user }) {
   const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [], [refreshKey]);
   if (loading) return <Loading title="Finance" />;
   if (error) return <ErrorState title="Finance" error={error} />;
-  const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai'];
   const metrics = ['revenue', 'expenses', 'profit', 'cash', 'ar', 'ap'];
   const refresh = () => setRefreshKey(x => x + 1);
   return (

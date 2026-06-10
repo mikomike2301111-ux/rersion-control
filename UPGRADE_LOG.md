@@ -58,6 +58,32 @@ Verification:
 Notes / next steps:
 - Hash routes are intentionally used for Vercel-safe refresh behavior without requiring server-side route rewrites.
 
+## 2026-06-10 - Workspace Sub-Routes and Clutter Cleanup Continuation
+
+Target area:
+Module tab routing, responsive workspace layout
+
+Reason:
+After sidebar routes were added, inner workspace tabs still reset on refresh and several older fixed-column grids could still feel crowded.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+
+Improvements:
+- Added tab-level hash routes for Analytics, CRM, Sales, Purchases, Inventory, Manufacturing, and Finance.
+- Examples now include `#/sales/orders`, `#/crm/pipeline`, `#/finance/reports`, and `#/inventory/stock`.
+- Converted crowded KPI, analytics, report, pipeline, county, procurement, and manufacturing grids to responsive `auto-fit` layouts.
+- Kept existing clickable tab behavior while making refresh restore the same section.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+- Verified built Vite preview returns 200 for `#/sales/orders`, `#/crm/pipeline`, `#/finance/reports`, and `#/inventory/stock`.
+
+Notes / next steps:
+- Future deep links can add record-level routes, such as `#/sales/orders/:id`, when detail drawers become route-aware.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:
