@@ -82,7 +82,15 @@ em,
   transition: width .22s ease, padding .22s ease, transform .22s ease;
 }
 .sidebar-brand { min-height: 112px; display: grid; grid-template-columns: 58px 1fr 34px; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
-.sidebar-brand img { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; display: block; }
+.sidebar-brand img {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  display: block;
+  background: #050505;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12), 0 14px 26px rgba(0,0,0,.34);
+}
 .sidebar-brand-text strong { display: block; color: #fff; font-size: 24px; line-height: 1; font-weight: 900; letter-spacing: 0; }
 .sidebar-brand-text small { display: block; color: #d4af37; font-size: 13px; margin-top: 5px; font-weight: 900; letter-spacing: .18em; text-transform: uppercase; }
 .sidebar-collapse {
@@ -323,6 +331,9 @@ em,
 }
 .finance-hero {
   background: radial-gradient(circle at 78% 18%, rgba(23,180,81,.24), transparent 30%), radial-gradient(circle at 16% 86%, rgba(212,175,55,.18), transparent 28%), #050505;
+}
+.accounts-hero {
+  background: radial-gradient(circle at 78% 18%, rgba(212,175,55,.24), transparent 30%), radial-gradient(circle at 16% 86%, rgba(23,180,81,.16), transparent 28%), #050505;
 }
 .crm-hero {
   background: radial-gradient(circle at 82% 20%, rgba(20,184,116,.34), transparent 30%), radial-gradient(circle at 18% 86%, rgba(14,165,233,.18), transparent 28%), #042f2e;
@@ -1241,6 +1252,30 @@ input,
 select,
 textarea {
   font-weight: 400;
+}
+
+/* Final global de-bold pass. Keep enterprise hierarchy without the heavy stamped look. */
+.app-shell :where(button, label, small, em, span, p, input, select, textarea, td, th) {
+  font-weight: 400;
+}
+.app-shell :where(h1, h2, h3, strong, b, legend) {
+  font-weight: 580;
+}
+.app-shell :where(.primary-action, .new-button, .mini-action, .status, .badge, .change, .sidebar nav button.active, .sales-tabs button.active, .analytics-tabs button.active, .settings-tabs button.active) {
+  font-weight: 560;
+}
+.app-shell :where(.kpi-card h3, .sales-hero-stats strong, .analytics-kpi-row strong, .county-score strong, .pipeline-board b, .crm-card-grid b) {
+  font-weight: 620;
+}
+.sidebar-brand-text strong {
+  font-weight: 520;
+}
+.sidebar-brand-text small {
+  font-weight: 500;
+}
+.sidebar-collapsed .sidebar-brand img {
+  width: 58px;
+  height: 58px;
 }
 
 @media (max-width: 900px) {

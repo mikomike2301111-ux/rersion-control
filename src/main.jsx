@@ -15,6 +15,7 @@ import {
   Factory,
   FileText,
   Gauge,
+  Landmark,
   LineChart,
   Loader2,
   Map,
@@ -101,6 +102,7 @@ const nav = [
   { id: 'purchasing', label: 'Purchases', icon: ClipboardCheck },
   { id: 'inventory', label: 'Inventory', icon: Boxes },
   { id: 'finance', label: 'Finance', icon: CircleDollarSign },
+  { id: 'accounts', label: 'Accounts', icon: Landmark },
   { id: 'production', label: 'Manufacturing', icon: Factory },
   { id: 'customers', label: 'CRM', icon: Users },
   { id: 'reports', label: 'Reports', icon: FileText },
@@ -181,6 +183,7 @@ function App() {
           {page === 'purchasing' && <ProcurementWorkspace user={user} />}
           {page === 'inventory' && <InventoryWorkspace user={user} />}
           {page === 'finance' && <Finance user={user} />}
+          {page === 'accounts' && <AccountsWorkspace user={user} />}
           {page === 'production' && <Manufacturing user={user} />}
           {page === 'customers' && <CRMWorkspace user={user} />}
           {page === 'reports' && <Reports user={user} title="Reports" />}
@@ -240,7 +243,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user }
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src="/erp-logo-black.png" alt="Farmtrack ERP logo" />
+          <img src="/unity-erp-mark.png" alt="Unity ERP logo" />
           <div className="sidebar-brand-text">
             <strong>Unity</strong>
             <small>ERP</small>
@@ -2065,6 +2068,77 @@ function ProductionOrderModal({ user, formulas, onClose, onSaved }) {
   );
 }
 
+function AccountsWorkspace({ user }) {
+  const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals'];
+  const [view, setView] = useRouteTab('accounts', tabs, 'overview');
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [], [refreshKey]);
+  if (loading) return <Loading title="Accounts" />;
+  if (error) return <ErrorState title="Accounts" error={error} />;
+  const refresh = () => setRefreshKey(x => x + 1);
+  const accountCards = [
+    ['Accounts Receivable', data.overview.accountsReceivable, ReceiptText, 'Customer balances still to collect'],
+    ['Accounts Payable', data.overview.accountsPayable, ClipboardCheck, 'Supplier bills and purchase liabilities'],
+    ['Cash Position', data.overview.cashBalance, Landmark, 'Bank and cash accounts'],
+    ['Net Profit', data.overview.netProfit, LineChart, 'Posted income less posted costs']
+  ];
+  return (
+    <section className="page-stack sales-workspace accounts-workspace">
+      <div className="sales-hero accounts-hero">
+        <div>
+          <span>Accounting Control Center</span>
+          <h1>Accounts</h1>
+          <p>Chart of accounts, receivables, payables, bank balances, journals, reconciliations, and trial balance in one finance-backed workspace.</p>
+        </div>
+        <div className="sales-hero-stats">
+          <strong>{data.accounts.length}</strong><span>Accounts</span>
+          <strong>{data.journals.length}</strong><span>Journals</span>
+          <strong>{currency(data.overview.cashBalance)}</strong><span>Cash</span>
+        </div>
+      </div>
+      <FinanceHealthStrip data={data} />
+      <div className="sales-tabs">
+        {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
+      </div>
+
+      {view === 'overview' && (
+        <>
+          <div className="analytics-kpi-row">
+            {accountCards.map(([title, value, Icon, detail]) => (
+              <article key={title}>
+                <span>{title}</span>
+                <strong>{currency(value)}</strong>
+                <small>{detail}</small>
+                <Icon size={18} />
+              </article>
+            ))}
+          </div>
+          <div className="dashboard-grid">
+            <Panel className="span-8 sales-main-chart" title="Accounts Movement" action="Revenue / Expenses / Cash">
+              <SalesTrendChart data={data.trend} metric="cash" />
+            </Panel>
+            <Panel className="span-4" title="Posting Actions">
+              <FinanceQuickActions onJournal={() => setJournalOpen(true)} onExpense={() => setView('payables')} onPayment={() => setPaymentOpen(true)} />
+            </Panel>
+            <Panel className="span-6" title="Receivables Risk"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'balance', 'agingBucket', 'risk', 'status']} /></Panel>
+            <Panel className="span-6" title="Payables Risk"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>
+          </div>
+        </>
+      )}
+      {view === 'chart' && <Panel title="Chart of Accounts" action="Live"><SimpleTable rows={data.accounts} columns={['code', 'name', 'type', 'parent', 'status']} /></Panel>}
+      {view === 'receivables' && <Panel title="Accounts Receivable"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'agingBucket', 'risk', 'status']} /></Panel>}
+      {view === 'payables' && <Panel title="Accounts Payable"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'invoiceAmount', 'paidAmount', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>}
+      {view === 'banking' && <Panel title="Bank & Cash Accounts"><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'currency', 'openingBalance', 'balance', 'status']} /></Panel>}
+      {view === 'trial' && <div className="dashboard-grid"><Panel className="span-4" title="Trial Balance"><FinanceTrialBalance journalLines={data.journalLines} /></Panel><Panel className="span-8" title="Ledger Lines"><SimpleTable rows={data.ledger} columns={['date', 'accountCode', 'accountName', 'debit', 'credit', 'sourceModule', 'reference']} /></Panel></div>}
+      {view === 'journals' && <Panel title="Journal Entries" action="Balanced postings"><SimpleTable rows={data.journals} columns={['journalNo', 'date', 'description', 'sourceModule', 'reference', 'totalDebit', 'totalCredit', 'approvalStatus']} /></Panel>}
+      {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
+      {paymentOpen && <FinancePaymentModal user={user} receivables={data.receivables} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); refresh(); setView('receivables'); }} />}
+    </section>
+  );
+}
+
 function Finance({ user }) {
   const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai'];
   const [view, setView] = useRouteTab('finance', tabs, 'dashboard');
@@ -2564,6 +2638,7 @@ const pageInputDefaults = {
   purchasing: 'purchaseRequest',
   inventory: 'inventory',
   finance: 'expense',
+  accounts: 'journal',
   production: 'rawMaterial',
   customers: 'customer',
   reports: 'journal',

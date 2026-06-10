@@ -33,6 +33,37 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - Accounts Sidebar and Logo Polish
+
+Target area:
+Sidebar navigation, logo assets, browser favicon, typography weights, accounts workspace
+
+Reason:
+The top logo did not present cleanly, the browser icon needed a closer crop, the UI still had overly bold spots, and Accounts needed its own side-panel entry and working screen.
+
+Files changed:
+- `index.html`
+- `public/unity-erp-favicon.png`
+- `public/unity-erp-mark.png`
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added a 40% zoomed browser favicon.
+- Added a cleaner cropped sidebar logo mark.
+- Added Accounts to the sidebar with its own route and workspace.
+- Built the Accounts workspace from live finance data: chart of accounts, receivables, payables, bank accounts, trial balance, journals, and posting actions.
+- Added a final de-bold typography pass across labels, controls, headings, and status elements.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+- Opened local Vite preview at `#/accounts` and captured a viewport screenshot.
+
+Notes / next steps:
+- GitHub push still depends on local Git credentials being available.
+
 ## 2026-06-10 - Softer Typography Weight Pass
 
 Target area:
