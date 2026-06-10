@@ -112,6 +112,32 @@ Verification:
 Notes / next steps:
 - Future upgrades can make each settings rule button open its own detailed policy editor.
 
+## 2026-06-10 - Settings Usability and Readability Fix
+
+Target area:
+Settings company form, settings actions, typography
+
+Reason:
+Company Settings looked cramped, Settings controls did not give enough feedback, and the text needed to be larger and easier to read.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+
+Improvements:
+- Split Company Settings into grouped fieldsets: identity, contact, tax, localization, banking, and documents.
+- Increased Settings field, tab, table, card, and button typography by roughly 20%.
+- Widened company fields and rule cards to prevent cramped layouts.
+- Added save confirmation feedback for Company Settings.
+- Made Settings rule Configure buttons call the backend and show saving feedback.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+
+Notes / next steps:
+- The next upgrade can replace rule Configure quick-save actions with detailed modal editors for each policy.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

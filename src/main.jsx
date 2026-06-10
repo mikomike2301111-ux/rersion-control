@@ -2740,6 +2740,7 @@ function SettingsPage({ user }) {
   const [companyForm, setCompanyForm] = useState({});
   const [userModal, setUserModal] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
   const { loading, data, error } = useServer(user, 'getSettingsWorkspaceData', [], [refreshKey]);
   useEffect(() => {
     if (data?.settings) setCompanyForm(data.settings);
@@ -2752,12 +2753,21 @@ function SettingsPage({ user }) {
     setSaving(true);
     try {
       await rpc('saveSettingsSection', [user, 'company', companyForm]);
+      setMessage('Company settings saved successfully.');
       refresh();
     } finally {
       setSaving(false);
     }
   }
   const rulesForView = data.rules[view] || [];
+  const companyGroups = [
+    ['Company Identity', [['company_name', 'Company Name'], ['website', 'Website'], ['business_registration_no', 'Business Registration No.']]],
+    ['Contact Details', [['company_address', 'Company Address'], ['company_phone', 'Phone Numbers'], ['company_email', 'Email Addresses']]],
+    ['Tax & Compliance', [['kra_pin', 'Tax PIN'], ['vat_number', 'VAT Number']]],
+    ['Localization', [['default_currency', 'Default Currency'], ['default_language', 'Default Language'], ['default_timezone', 'Default Timezone'], ['date_format', 'Date Format'], ['number_format', 'Number Format']]],
+    ['Banking & Payments', [['bank_name', 'Bank Name'], ['bank_account', 'Bank Account'], ['mpesa_paybill', 'M-Pesa Paybill'], ['mpesa_account', 'M-Pesa Account']]],
+    ['Documents', [['invoice_footer', 'Invoice Footer']]]
+  ];
   return (
     <section className="page-stack settings-workspace">
       <div className="sales-hero settings-hero">
@@ -2781,17 +2791,19 @@ function SettingsPage({ user }) {
         <div className="dashboard-grid">
           <Panel className="span-8" title="Company Settings" action="Editable">
             <form className="settings-form-grid" onSubmit={saveCompany}>
-              {[
-                ['company_name', 'Company Name'], ['company_address', 'Company Address'], ['company_phone', 'Phone Numbers'], ['company_email', 'Email Addresses'],
-                ['website', 'Website'], ['business_registration_no', 'Business Registration No.'], ['kra_pin', 'Tax PIN'], ['vat_number', 'VAT Number'],
-                ['default_currency', 'Default Currency'], ['default_language', 'Default Language'], ['default_timezone', 'Default Timezone'], ['date_format', 'Date Format'],
-                ['number_format', 'Number Format'], ['bank_name', 'Bank Name'], ['bank_account', 'Bank Account'], ['mpesa_paybill', 'M-Pesa Paybill'],
-                ['mpesa_account', 'M-Pesa Account'], ['invoice_footer', 'Invoice Footer']
-              ].map(([key, name]) => (
-                <label key={key}>{name}<input value={companyForm[key] || ''} onChange={e => setCompanyForm({ ...companyForm, [key]: e.target.value })} /></label>
+              {companyGroups.map(([group, fields]) => (
+                <fieldset key={group} className="settings-fieldset">
+                  <legend>{group}</legend>
+                  <div>
+                    {fields.map(([key, name]) => (
+                      <label key={key}>{name}<input value={companyForm[key] || ''} onChange={e => setCompanyForm({ ...companyForm, [key]: e.target.value })} /></label>
+                    ))}
+                  </div>
+                </fieldset>
               ))}
               <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Save Company Settings'}</button>
             </form>
+            {message && <div className="settings-save-message"><CheckCircle2 size={18} />{message}</div>}
           </Panel>
           <Panel className="span-4" title="Branding Preview">
             <div className="settings-brand-preview">
@@ -2823,12 +2835,12 @@ function SettingsPage({ user }) {
 
       {view === 'departments' && <SettingsTable title="Departments" rows={data.departments} columns={['name', 'manager', 'members', 'status']} />}
       {view === 'warehouses' && <SettingsTable title="Warehouse Settings" rows={data.warehouses} columns={['name', 'location', 'manager', 'utilization', 'status']} />}
-      {view === 'products' && <SettingsRules title="Product Settings" items={['Product categories', 'Units of measure', 'KG / G / MG conversions', 'Litres / ML conversions', 'Pieces / Boxes / Cartons', 'Barcode settings', 'QR code settings', 'Product number generation']} />}
-      {['manufacturing', 'procurement', 'inventory', 'sales', 'finance'].includes(view) && <SettingsRules title={`${label(view)} Rules`} items={rulesForView} />}
-      {view === 'tax' && <SettingsRules title="Tax Settings" items={['VAT setup', 'Withholding tax rules', 'Filing periods', 'Tax report templates', 'KRA PIN controls', 'Tax audit trail']} />}
+      {view === 'products' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Product Settings" items={['Product categories', 'Units of measure', 'KG / G / MG conversions', 'Litres / ML conversions', 'Pieces / Boxes / Cartons', 'Barcode settings', 'QR code settings', 'Product number generation']} />}
+      {['manufacturing', 'procurement', 'inventory', 'sales', 'finance'].includes(view) && <SettingsRules user={user} section={view} onSaved={setMessage} title={`${label(view)} Rules`} items={rulesForView} />}
+      {view === 'tax' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Tax Settings" items={['VAT setup', 'Withholding tax rules', 'Filing periods', 'Tax report templates', 'KRA PIN controls', 'Tax audit trail']} />}
       {view === 'notifications' && <SettingsTable title="Notification Settings" rows={data.notifications} columns={['channel', 'event', 'status']} />}
       {view === 'templates' && <SettingsTable title="Document Templates" rows={data.documentTemplates} columns={['name', 'version', 'status']} />}
-      {view === 'automation' && <SettingsRules title="Workflow Automation" items={['Sales quote approval', 'Purchase order approval', 'Production start material reservation', 'Delivery confirmation workflow', 'Finance posting automation', 'Low stock alerts']} />}
+      {view === 'automation' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Workflow Automation" items={['Sales quote approval', 'Purchase order approval', 'Production start material reservation', 'Delivery confirmation workflow', 'Finance posting automation', 'Low stock alerts']} />}
       {view === 'integrations' && <SettingsTable title="Integrations" rows={data.integrations} columns={['name', 'status', 'detail']} />}
       {view === 'audit' && (
         <div className="dashboard-grid">
@@ -2838,7 +2850,7 @@ function SettingsPage({ user }) {
       )}
       {view === 'security' && <SettingsKeyValues title="Security" data={data.security} />}
       {view === 'backup' && <SettingsTable title="Backup & Recovery" rows={data.backups} columns={['name', 'schedule', 'status']} />}
-      {view === 'data' && <SettingsRules title="Data Management" items={['CSV import', 'Excel export', 'Archive old records', 'Clean duplicate records', 'Data retention policy', 'Department data ownership']} />}
+      {view === 'data' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Data Management" items={['CSV import', 'Excel export', 'Archive old records', 'Clean duplicate records', 'Data retention policy', 'Department data ownership']} />}
       {view === 'api' && <SettingsTable title="API Settings" rows={data.apiSettings} columns={['name', 'scope', 'status']} />}
       {view === 'health' && <SettingsKeyValues title="System Health" data={data.health} />}
       {view === 'advanced' && <SettingsTable title="Advanced Feature Flags" rows={data.advancedFlags} columns={['name', 'enabled']} />}
@@ -2857,11 +2869,18 @@ function SettingsTable({ title, rows, columns }) {
   return <Panel title={title}><SimpleTable rows={rows} columns={columns} /></Panel>;
 }
 
-function SettingsRules({ title, items }) {
+function SettingsRules({ user, section, title, items, onSaved }) {
+  const [active, setActive] = useState('');
+  async function configure(item) {
+    setActive(item);
+    await rpc('saveSettingsSection', [user, section || title, { selectedRule: item, status: 'Configured' }]);
+    onSaved?.(`${item} configured.`);
+    setActive('');
+  }
   return (
     <Panel title={title} action={`${items.length} controls`}>
       <div className="settings-rule-grid">
-        {items.map(item => <article key={item}><CheckCircle2 size={17} /><span>{item}</span><button>Configure</button></article>)}
+        {items.map(item => <article key={item}><CheckCircle2 size={17} /><span>{item}</span><button onClick={() => configure(item)} disabled={active === item}>{active === item ? 'Saving...' : 'Configure'}</button></article>)}
       </div>
     </Panel>
   );
