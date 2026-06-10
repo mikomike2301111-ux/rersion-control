@@ -435,7 +435,7 @@ em,
   display: inline-flex; align-items: center; gap: 8px; color: #344054; font-weight: 700; background: #fff;
 }
 .report-filter-bar { padding: 8px 20px 18px; display: flex; flex-wrap: wrap; gap: 12px; }
-.report-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.report-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .report-filter-bar label { color: var(--muted); font-size: 12px; display: grid; gap: 7px; font-weight: 800; min-width: 180px; }
 .report-filter-bar button {
   min-height: 40px; border: 1px solid var(--line); border-radius: 999px; padding: 0 12px; background: #fff;
@@ -446,7 +446,7 @@ em,
   height: 40px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: #fff; color: var(--text);
 }
 .report-action-grid { padding: 10px 20px 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.report-action-grid.wide { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.report-action-grid.wide { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .report-action-grid button {
   min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-weight: 900; color: #344054;
 }
@@ -465,18 +465,49 @@ em,
 .report-archive-list strong, .report-archive-list span, .report-archive-list em { display: block; }
 .report-archive-list span, .report-archive-list em { color: #667085; font-size: 12px; font-style: normal; margin-top: 3px; }
 .report-archive-list button { min-height: 34px; border-radius: 8px; background: #050505; color: #fff; padding: 0 12px; font-weight: 900; }
-.report-library-list { padding: 8px 20px 22px; display: grid; gap: 8px; }
+.report-library-list { padding: 8px 20px 22px; display: grid; gap: 8px; max-height: 320px; overflow: auto; }
 .report-library-list button {
   min-height: 42px; border: 1px solid #eef0f3; border-radius: 10px; padding: 0 12px; display: flex; align-items: center; gap: 10px;
   text-align: left; color: #344054; font-weight: 900; background: #fff;
 }
 .report-library-list button:hover { background: #050505; color: #fff; border-color: #050505; }
-.report-template-grid { padding: 8px 20px 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.report-template-toolbar { padding: 10px 20px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.report-template-toolbar > span { color: #667085; font-size: 12px; font-weight: 900; }
+.report-search-box {
+  min-width: min(100%, 320px);
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  color: #667085;
+  background: #fff;
+}
+.report-search-box input { border: 0; outline: 0; width: 100%; font-weight: 800; color: var(--text); }
+.report-template-grid {
+  padding: 12px 20px 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  max-height: 340px;
+  overflow: auto;
+}
 .report-template-grid button {
-  min-height: 74px; border: 1px solid #eef0f3; border-radius: 12px; padding: 12px; display: grid; gap: 5px; text-align: left; background: #fff;
+  min-height: 66px; border: 1px solid #eef0f3; border-radius: 12px; padding: 11px 12px; display: grid; gap: 5px; text-align: left; background: #fff;
 }
 .report-template-grid button.active, .report-template-grid button:hover { border-color: #050505; box-shadow: 0 10px 24px rgba(16,24,40,.08); }
 .report-template-grid span { color: #667085; font-size: 12px; font-weight: 800; }
+.empty-reports {
+  min-height: 90px;
+  border: 1px dashed #d0d5dd;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #667085;
+  font-weight: 900;
+}
 .input-type-grid { padding: 10px 20px 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .input-type-grid button {
   min-height: 42px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #344054; font-weight: 900;

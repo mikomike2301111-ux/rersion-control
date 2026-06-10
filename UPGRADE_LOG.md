@@ -33,6 +33,31 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-10 - Sidebar Route Persistence and Report Declutter
+
+Target area:
+Navigation, report center layout
+
+Reason:
+Refreshing the ERP returned users to the default dashboard, and the Available Reports panel was too crowded to scan comfortably.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+
+Improvements:
+- Added hash routes for sidebar pages, such as `#/dashboard`, `#/reports`, `#/crm`, `#/purchases`, and `#/manufacturing`, so refresh keeps the current workspace.
+- Added report search and module-aware filtering to Available Reports.
+- Reworked report grids, filter rows, library lists, and export buttons to wrap and scroll cleanly instead of clustering.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+- Verified built Vite preview returns 200 for `#/reports` and `#/crm`.
+
+Notes / next steps:
+- Hash routes are intentionally used for Vercel-safe refresh behavior without requiring server-side route rewrites.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

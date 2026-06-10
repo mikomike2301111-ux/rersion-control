@@ -107,15 +107,33 @@ const nav = [
   { id: 'inputs', label: 'Inputs', icon: Command },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];
+const routeAliases = { crm: 'customers', purchases: 'purchasing', manufacturing: 'production' };
+const routeForPage = id => id === 'customers' ? 'crm' : id === 'purchasing' ? 'purchases' : id === 'production' ? 'manufacturing' : id;
+const pageFromRoute = () => {
+  const raw = window.location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard';
+  const page = routeAliases[raw] || raw;
+  return nav.some(item => item.id === page) ? page : 'dashboard';
+};
 
 function App() {
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('farmtrack-user');
     return raw ? JSON.parse(raw) : null;
   });
-  const [page, setPage] = useState('dashboard');
+  const [page, setPageState] = useState(pageFromRoute);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [inputOpen, setInputOpen] = useState(false);
+  const setPage = next => {
+    setPageState(next);
+    const route = routeForPage(next);
+    if (window.location.hash !== `#/${route}`) window.location.hash = `/${route}`;
+  };
+  useEffect(() => {
+    const onHash = () => setPageState(pageFromRoute());
+    window.addEventListener('hashchange', onHash);
+    if (!window.location.hash) window.history.replaceState(null, '', `#/${routeForPage(page)}`);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   if (!user) return <Login onLogin={u => {
     localStorage.setItem('farmtrack-user', JSON.stringify(u));
@@ -2312,10 +2330,16 @@ function Reports({ user, title }) {
   const [emailOpen, setEmailOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [outputFormat, setOutputFormat] = useState('PDF');
+  const [reportQuery, setReportQuery] = useState('');
   const reportState = useServer(user, 'getReportCenterData', [filters], [JSON.stringify(filters)]);
   const { loading, data, error } = reportState;
   if (loading) return <Loading title={title} />;
   if (error) return <ErrorState title={title} error={error} />;
+  const selectedModule = filters.module || 'Executive';
+  const normalizedQuery = reportQuery.trim().toLowerCase();
+  const visibleReports = data.reports
+    .filter(report => selectedModule === 'Executive' || report.module === selectedModule || report.module === 'Executive')
+    .filter(report => !normalizedQuery || `${report.name} ${report.module}`.toLowerCase().includes(normalizedQuery));
   function openHtmlFile(file, shouldPrint = false) {
     const html = new TextDecoder().decode(Uint8Array.from(atob(file.content), c => c.charCodeAt(0)));
     const w = window.open('', '_blank');
@@ -2353,7 +2377,7 @@ function Reports({ user, title }) {
         </div>
       </div>
 
-      <Panel title="Report Filters" action={`${data.generatedBy} · ${new Date(data.generatedAt).toLocaleString()}`}>
+      <Panel title="Report Filters" action={`${data.generatedBy} / ${new Date(data.generatedAt).toLocaleString()}`}>
         <div className="report-filter-bar report-filter-grid">
           <label>Module<select value={filters.module} onChange={e => setFilters({ ...filters, module: e.target.value })}>{data.modules.map(x => <option key={x}>{x}</option>)}</select></label>
           <label>Report<select value={filters.reportName || data.activeReport.name} onChange={e => setFilters({ ...filters, reportName: e.target.value })}>{data.reports.map(x => <option key={x.name}>{x.name}</option>)}</select></label>
@@ -2375,13 +2399,21 @@ function Reports({ user, title }) {
           </div>
         </Panel>
         <Panel className="span-8" title="Available Reports" action={`${data.reports.length} templates`}>
+          <div className="report-template-toolbar">
+            <div className="report-search-box">
+              <Search size={16} />
+              <input value={reportQuery} onChange={e => setReportQuery(e.target.value)} placeholder="Search reports..." />
+            </div>
+            <span>{visibleReports.length} shown / {data.reports.length} total</span>
+          </div>
           <div className="report-template-grid">
-            {data.reports.slice(0, 12).map(report => (
+            {visibleReports.map(report => (
               <button key={report.id} className={data.activeReport.name === report.name ? 'active' : ''} onClick={() => setFilters({ ...filters, module: report.module, reportName: report.name })}>
                 <strong>{report.name}</strong>
-                <span>{report.module} · {report.records} records</span>
+                <span>{report.module} / {report.records} records</span>
               </button>
             ))}
+            {!visibleReports.length && <div className="empty-reports">No reports match this module or search.</div>}
           </div>
         </Panel>
         <Panel className="span-7 sales-main-chart" title={data.activeReport.name} action={data.activeReport.dateRange}>
