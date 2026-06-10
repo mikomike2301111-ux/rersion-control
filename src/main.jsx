@@ -2311,24 +2311,32 @@ function Reports({ user, title }) {
   const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module: 'Executive', status: 'All Statuses' }));
   const [emailOpen, setEmailOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [outputFormat, setOutputFormat] = useState('PDF');
   const reportState = useServer(user, 'getReportCenterData', [filters], [JSON.stringify(filters)]);
   const { loading, data, error } = reportState;
   if (loading) return <Loading title={title} />;
   if (error) return <ErrorState title={title} error={error} />;
-  async function exportReport(format) {
+  function openHtmlFile(file, shouldPrint = false) {
+    const html = new TextDecoder().decode(Uint8Array.from(atob(file.content), c => c.charCodeAt(0)));
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      if (shouldPrint) w.print();
+    }
+  }
+  async function exportReport(format, overrideFilters = filters) {
     if (format === 'Print') {
-      const file = await rpc('generateReportExport', [user, filters, 'Print']);
-      const html = new TextDecoder().decode(Uint8Array.from(atob(file.content), c => c.charCodeAt(0)));
-      const w = window.open('', '_blank');
-      if (w) {
-        w.document.write(html);
-        w.document.close();
-        w.print();
-      }
+      const file = await rpc('generateReportExport', [user, overrideFilters, 'Print']);
+      openHtmlFile(file, true);
       return;
     }
-    const file = await rpc('generateReportExport', [user, filters, format]);
+    const file = await rpc('generateReportExport', [user, overrideFilters, format]);
     downloadBase64File(file);
+  }
+  async function previewReport() {
+    const file = await rpc('generateReportExport', [user, filters, 'PDF']);
+    openHtmlFile(file);
   }
   return (
     <section className="page-stack">
@@ -2379,18 +2387,29 @@ function Reports({ user, title }) {
         <Panel className="span-7 sales-main-chart" title={data.activeReport.name} action={data.activeReport.dateRange}>
           <SalesTrendChart data={data.trend} metric="value" />
         </Panel>
-        <Panel className="span-5" title="Export Actions">
-          <div className="report-action-grid">
+        <Panel className="span-5" title="Output Center" action="Downloadable">
+          <div className="report-output-center">
+            <label>Output Format<select value={outputFormat} onChange={e => setOutputFormat(e.target.value)}>{data.formats.map(x => <option key={x}>{x}</option>)}</select></label>
+            <div>
+              <button onClick={previewReport}>Preview</button>
+              <button onClick={() => exportReport(outputFormat)}>Download</button>
+              <button onClick={() => exportReport('Print')}>Print</button>
+              <button onClick={() => setEmailOpen(true)}>Email</button>
+              <button onClick={() => setScheduleOpen(true)}>Schedule</button>
+              <button onClick={() => exportReport('ZIP Bundle')}>Package</button>
+            </div>
+          </div>
+        </Panel>
+        <Panel className="span-12" title="All Export Formats">
+          <div className="report-action-grid wide">
             {data.formats.map(x => <button key={x} onClick={() => exportReport(x)}>{x}</button>)}
-            <button onClick={() => setEmailOpen(true)}>Email</button>
-            <button onClick={() => setScheduleOpen(true)}>Schedule</button>
           </div>
         </Panel>
         <Panel className="span-12" title="Filtered Report Data">
           <SimpleTable rows={data.rows} columns={Object.keys(data.rows[0] || { type: '', reference: '', date: '', status: '', value: '' }).slice(0, 8)} />
         </Panel>
         <Panel className="span-6" title="Report Archive">
-          <SimpleTable rows={data.archive} columns={['reportName', 'module', 'format', 'generatedBy', 'generatedAt', 'status']} />
+          <ReportArchive rows={data.archive} onDownload={entry => exportReport(entry.format, { ...(entry.filters || filters), reportName: entry.reportName, module: entry.module })} />
         </Panel>
         <Panel className="span-6" title="Scheduled Reports">
           <SimpleTable rows={data.schedules} columns={['reportName', 'format', 'schedule', 'recipients', 'status']} />
@@ -2425,6 +2444,24 @@ function ReportEmailModal({ user, filters, reportName, onClose }) {
         <label>Format<select value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>{['PDF', 'Excel', 'CSV', 'PowerPoint'].map(x => <option key={x}>{x}</option>)}</select></label>
         <button className="primary-action" disabled={saving}>{saving ? 'Queueing...' : 'Queue Email'}</button>
       </form>
+    </div>
+  );
+}
+
+function ReportArchive({ rows, onDownload }) {
+  if (!rows.length) return <div className="quiet-state">No generated reports archived yet. Download or preview a report to create an archive entry.</div>;
+  return (
+    <div className="report-archive-list">
+      {rows.map(entry => (
+        <article key={entry.id || entry.fileName}>
+          <div>
+            <strong>{entry.reportName}</strong>
+            <span>{entry.module} · {entry.format} · {entry.records} records</span>
+            <em>{entry.fileName}</em>
+          </div>
+          <button onClick={() => onDownload(entry)}>Download</button>
+        </article>
+      ))}
     </div>
   );
 }

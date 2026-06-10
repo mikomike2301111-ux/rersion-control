@@ -767,3 +767,31 @@ Verification:
 - Ran `npm run build`.
 - Ran 10 report export passes across Sales, Customer, Inventory, Procurement, Manufacturing, Financial, Tax, Delivery, Payroll, and Executive reports.
 - Verified all 10 export formats generated downloadable files with archive records.
+
+## 2026-06-10 - QuickBooks-Style Report Output Workflow Upgrade
+
+Target area:
+Report output actions, preview, download, print, packages, archive re-download
+
+Reason:
+Report outputs needed to feel complete, not just a grid of export buttons. The workflow now behaves more like a report output center: choose format, preview, download, print, email, schedule, package, and re-download from archive.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added an Output Center panel with selectable output format.
+- Added Preview action that opens the official report layout.
+- Added Download action for the selected format.
+- Added Print action that opens the print layout and triggers browser print.
+- Added Package action for ZIP Bundle output.
+- Added All Export Formats panel for direct one-click downloads.
+- Replaced static archive table with a Report Archive list that can re-download archived reports.
+- Added responsive styling for output actions and archive rows.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+- Ran focused output workflow test for PDF preview generation, JSON download, ZIP Bundle package, archive creation, and archive re-download.
