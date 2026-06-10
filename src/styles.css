@@ -319,11 +319,12 @@ em,
 .crm-kanban article b { justify-self: end; font-size: 16px; }
 .crm-search { margin: 0 20px 14px; height: 42px; border: 1px solid var(--line); border-radius: 10px; display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #667085; }
 .crm-search input { border: 0; outline: 0; flex: 1; min-width: 0; }
-.crm-card-grid { padding: 0 20px 22px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.crm-card-grid { padding: 0 20px 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(245px, 1fr)); gap: 14px; }
 .crm-card-grid article {
   min-height: 176px; border: 1px solid #dfe4ec; border-left: 4px solid #22c55e; border-radius: 13px; background: linear-gradient(135deg, #fff, #f0fdf4);
-  padding: 14px; display: grid; gap: 7px;
+  padding: 14px; display: grid; gap: 7px; box-shadow: 0 8px 20px rgba(16,24,40,.05);
 }
+.crm-card-grid article strong { font-size: 16px; line-height: 1.25; }
 .crm-card-grid article.vip { border-left-color: #2563eb; background: linear-gradient(135deg, #fff, #eff6ff); }
 .crm-card-grid article.prospect { border-left-color: #f97316; background: linear-gradient(135deg, #fff, #fff7ed); }
 .crm-card-grid span, .crm-card-grid em, .crm-card-grid small { color: #667085; font-style: normal; font-size: 12px; }

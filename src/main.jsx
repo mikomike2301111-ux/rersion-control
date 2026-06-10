@@ -784,6 +784,7 @@ function CRMWorkspace({ user }) {
             </Panel>
             <Panel className="span-5" title="Top Customers"><CRMTopCustomers rows={data.topCustomers} /></Panel>
           </div>
+          <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} title="Customers and Accounts" />
         </>
       )}
 
@@ -829,9 +830,9 @@ function CRMPipelineBoard({ leads, stages }) {
   );
 }
 
-function CRMCustomersGrid({ customers, query, setQuery }) {
+function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Directory' }) {
   return (
-    <Panel title="Customer Directory" action={`${customers.length} records`}>
+    <Panel title={title} action={`${customers.length} records`}>
       <div className="crm-search"><Search size={16} /><input placeholder="Search customers, phone, county, type..." value={query} onChange={e => setQuery(e.target.value)} /></div>
       <div className="crm-card-grid">
         {customers.map(customer => (
