@@ -450,6 +450,18 @@ em,
   min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-weight: 900; color: #344054;
 }
 .report-action-grid button:hover { background: #050505; color: #fff; border-color: #050505; }
+.report-library-list { padding: 8px 20px 22px; display: grid; gap: 8px; }
+.report-library-list button {
+  min-height: 42px; border: 1px solid #eef0f3; border-radius: 10px; padding: 0 12px; display: flex; align-items: center; gap: 10px;
+  text-align: left; color: #344054; font-weight: 900; background: #fff;
+}
+.report-library-list button:hover { background: #050505; color: #fff; border-color: #050505; }
+.report-template-grid { padding: 8px 20px 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.report-template-grid button {
+  min-height: 74px; border: 1px solid #eef0f3; border-radius: 12px; padding: 12px; display: grid; gap: 5px; text-align: left; background: #fff;
+}
+.report-template-grid button.active, .report-template-grid button:hover { border-color: #050505; box-shadow: 0 10px 24px rgba(16,24,40,.08); }
+.report-template-grid span { color: #667085; font-size: 12px; font-weight: 800; }
 .input-type-grid { padding: 10px 20px 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .input-type-grid button {
   min-height: 42px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #344054; font-weight: 900;
@@ -684,6 +696,7 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
   .procurement-flow, .procurement-scorecards, .procurement-county-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .analytics-kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .report-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .input-form-grid, .input-type-grid { grid-template-columns: 1fr; }
   .crm-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -717,6 +730,7 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
   .procurement-flow, .procurement-scorecards, .procurement-county-grid { grid-template-columns: 1fr; }
   .analytics-kpi-row { grid-template-columns: 1fr; }
   .report-filter-grid { grid-template-columns: 1fr; }
+  .report-template-grid { grid-template-columns: 1fr; }
   .team-comparison-table article, .quote-workflow article { grid-template-columns: 1fr; }
   .category-panel { flex-direction: column; align-items: stretch; }
   .settings-grid { grid-template-columns: 1fr; }

@@ -2361,12 +2361,27 @@ function Reports({ user, title }) {
       </div>
 
       <div className="dashboard-grid">
+        <Panel className="span-4" title="Report Library" action="QuickBooks style">
+          <div className="report-library-list">
+            {data.categories.map(category => <button key={category} onClick={() => setFilters({ ...filters, module: category.includes('Sales') ? 'Sales' : category.includes('Customer') ? 'Customer' : category.includes('Inventory') ? 'Inventory' : category.includes('Procurement') ? 'Procurement' : category.includes('Manufacturing') ? 'Manufacturing' : category.includes('Finance') ? 'Financial' : category.includes('Payroll') ? 'Payroll' : category.includes('Tax') ? 'Tax' : category.includes('Delivery') ? 'Delivery' : 'Executive' })}><FileText size={16} />{category}</button>)}
+          </div>
+        </Panel>
+        <Panel className="span-8" title="Available Reports" action={`${data.reports.length} templates`}>
+          <div className="report-template-grid">
+            {data.reports.slice(0, 12).map(report => (
+              <button key={report.id} className={data.activeReport.name === report.name ? 'active' : ''} onClick={() => setFilters({ ...filters, module: report.module, reportName: report.name })}>
+                <strong>{report.name}</strong>
+                <span>{report.module} · {report.records} records</span>
+              </button>
+            ))}
+          </div>
+        </Panel>
         <Panel className="span-7 sales-main-chart" title={data.activeReport.name} action={data.activeReport.dateRange}>
           <SalesTrendChart data={data.trend} metric="value" />
         </Panel>
         <Panel className="span-5" title="Export Actions">
           <div className="report-action-grid">
-            {['PDF', 'Excel', 'CSV', 'PowerPoint', 'Print'].map(x => <button key={x} onClick={() => exportReport(x)}>{x}</button>)}
+            {data.formats.map(x => <button key={x} onClick={() => exportReport(x)}>{x}</button>)}
             <button onClick={() => setEmailOpen(true)}>Email</button>
             <button onClick={() => setScheduleOpen(true)}>Schedule</button>
           </div>

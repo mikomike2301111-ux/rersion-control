@@ -738,3 +738,32 @@ Verification:
 - Ran `node --check api/rpc.js`.
 - Ran `npm run build`.
 - Ran CRM RPC workflow checks for workspace loading, customer creation, lead/opportunity creation, call logging, and refreshed CRM counts.
+
+## 2026-06-10 - Enterprise Report Document Factory Upgrade
+
+Target area:
+Reports, downloads, exports, report archive, source modules, official document outputs
+
+Reason:
+Reports needed to behave like an official document factory similar to QuickBooks: searchable, filterable, downloadable, printable, archived, and sourced from all departments rather than acting like another analytics page.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Expanded Report Center modules to Executive, Sales, Customer, Inventory, Procurement, Manufacturing, Financial, Payroll, Tax, Delivery, Employee, Analytics, and Custom.
+- Added report categories and a structured report library.
+- Added a larger report template catalog including sales, customer, inventory, procurement, manufacturing, delivery, payroll, tax, finance, employee, analytics, and custom reports.
+- Expanded export outputs to 10 formats: PDF, Excel, CSV, PowerPoint, Word, JSON, XML, Print, Email Package, and ZIP Bundle.
+- Added backend export generation for JSON, XML, Word-style document output, Email Package, and ZIP Bundle placeholder packages.
+- Kept archive logging for every generated export.
+- Updated the Report Center UI with QuickBooks-style report categories, template cards, date filters, export actions, archive, schedules, and filtered rows.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+- Ran 10 report export passes across Sales, Customer, Inventory, Procurement, Manufacturing, Financial, Tax, Delivery, Payroll, and Executive reports.
+- Verified all 10 export formats generated downloadable files with archive records.

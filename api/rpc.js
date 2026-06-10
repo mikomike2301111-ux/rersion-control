@@ -1626,6 +1626,10 @@ const api = {
     const products = list('products');
     const production = list('production').filter(row => inDateRange(row, scope));
     const expenses = list('expenses').filter(row => inDateRange(row, scope));
+    const deliveries = list('deliveries').filter(row => inDateRange(row, scope));
+    const payroll = d.payrollRecords || d.payroll || [];
+    const taxes = d.taxRecords || d.taxes || [];
+    const reportFormats = ['PDF', 'Excel', 'CSV', 'PowerPoint', 'Word', 'JSON', 'XML', 'Print', 'Email Package', 'ZIP Bundle'];
     const rowsByModule = {
       Executive: [
         ...sales.map(row => ({ type: 'Sale', reference: row.saleNo, party: row.customerName, date: dateValue(row), status: row.status, value: num(row.total) })),
@@ -1637,7 +1641,11 @@ const api = {
       Procurement: purchaseOrders.map(row => ({ reportType: 'Procurement', reference: row.poNo, supplier: row.supplierName, warehouse: row.warehouseName, date: dateValue(row), status: row.status, value: num(row.total) })),
       Financial: [...invoices.map(row => ({ reportType: 'Receivable', reference: row.invNo, party: row.customerName, date: dateValue(row), status: row.status, value: num(row.total), paid: num(row.paid), balance: num(row.balance) })), ...expenses.map(row => ({ reportType: 'Expense', reference: row.expNo, party: row.category, date: dateValue(row), status: row.status, value: num(row.amount), paid: num(row.amount), balance: 0 }))],
       Production: production.map(row => ({ reportType: 'Production', reference: row.jobNo, product: row.productName, date: dateValue(row), status: row.status, plannedQty: num(row.plannedQty), completedQty: num(row.completedQty), cost: num(row.materialCost) })),
+      Manufacturing: production.map(row => ({ reportType: 'Manufacturing', reference: row.jobNo, product: row.productName, date: dateValue(row), status: row.status, plannedQty: num(row.plannedQty), completedQty: num(row.completedQty), cost: num(row.materialCost) })),
       Customer: customers.map(row => ({ reportType: 'Customer', customer: row.name, phone: row.phone, county: row.city, status: row.status, creditLimit: num(row.creditLimit), balance: num(row.balance), orders: sales.filter(s => s.customerName === row.name || s.customerId === row.id).length })),
+      Delivery: deliveries.map(row => ({ reportType: 'Delivery', reference: row.deliveryNo, saleNo: row.saleNo || '', customer: row.customerName, date: dateValue(row), driver: row.driver, vehicle: row.vehicle, status: row.status })),
+      Payroll: payroll.map(row => ({ reportType: 'Payroll', employee: row.name || row.employeeName, department: row.department, grossPay: num(row.basicSalary) + num(row.allowances), deductions: num(row.deductions), netPay: num(row.netPay), status: row.status })),
+      Tax: taxes.map(row => ({ reportType: 'Tax', taxType: row.taxType, period: row.period, liability: num(row.liability), status: row.status })),
       Employee: (d.users || []).map(row => ({ reportType: 'Employee', name: row.name, email: row.email, role: row.role, status: row.status, lastLogin: row.lastLogin || '' })),
       Analytics: [
         { metric: 'Revenue', value: sales.reduce((s, row) => s + num(row.total), 0), records: sales.length },
@@ -1648,18 +1656,25 @@ const api = {
     };
     const rows = rowsByModule[module] || rowsByModule.Executive;
     const totalValue = rows.reduce((sum, row) => sum + num(row.value || row.revenue || row.balance), 0);
-    const reports = [
-      'Executive Summary Report', 'Sales Performance Report', 'Inventory Valuation Report', 'Supplier Performance Report',
-      'Financial Summary Report', 'Production Efficiency Report', 'Customer Intelligence Report', 'Employee Activity Report',
-      'Analytics Intelligence Report', 'Custom Filtered Report'
-    ].map((name, index) => ({
+    const reportCatalog = [
+      ['Executive Summary Report', 'Executive'], ['Company Snapshot', 'Executive'], ['Sales Summary', 'Sales'], ['Daily Sales', 'Sales'],
+      ['Monthly Sales', 'Sales'], ['Salesperson Performance', 'Sales'], ['County Sales', 'Sales'], ['Product Sales', 'Sales'],
+      ['Invoice Report', 'Financial'], ['Payment Report', 'Financial'], ['Profit and Loss', 'Financial'], ['Cash Flow Statement', 'Financial'],
+      ['Accounts Receivable Aging', 'Financial'], ['Customer List', 'Customer'], ['Customer Purchases', 'Customer'], ['Customer Lifetime Value', 'Customer'],
+      ['Stock Summary', 'Inventory'], ['Stock Valuation', 'Inventory'], ['Low Stock Report', 'Inventory'], ['Warehouse Report', 'Inventory'],
+      ['Supplier Performance Report', 'Procurement'], ['Purchase Order Report', 'Procurement'], ['Procurement Spend Report', 'Procurement'],
+      ['Manufacturing Batch Report', 'Manufacturing'], ['Production Efficiency Report', 'Manufacturing'], ['Raw Material Consumption Report', 'Manufacturing'],
+      ['Delivery Status Report', 'Delivery'], ['Route Report', 'Delivery'], ['Payroll Summary', 'Payroll'], ['Tax Liability Report', 'Tax'],
+      ['Employee Activity Report', 'Employee'], ['Analytics Intelligence Report', 'Analytics'], ['Custom Filtered Report', module]
+    ];
+    const reports = reportCatalog.map(([name, reportModule], index) => ({
       id: `RPT-${index + 1}`,
       name,
-      module: ['Executive', 'Sales', 'Inventory', 'Procurement', 'Financial', 'Production', 'Customer', 'Employee', 'Analytics', module][index] || module,
-      records: rows.length,
-      value: Math.round(totalValue),
+      module: reportModule,
+      records: (rowsByModule[reportModule] || rows).length,
+      value: Math.round((rowsByModule[reportModule] || rows).reduce((sum, row) => sum + num(row.value || row.revenue || row.balance || row.netPay || row.liability), 0)),
       dateRange: `${startDate} to ${endDate}`,
-      exports: ['PDF', 'Excel', 'CSV', 'PowerPoint', 'Print', 'Email']
+      exports: reportFormats
     }));
     d.reportArchive ||= [];
     d.reportGenerationLogs ||= [];
@@ -1677,7 +1692,9 @@ const api = {
         product: filters.product || 'All Products',
         status: filters.status || 'All Statuses'
       },
-      modules: ['Executive', 'Sales', 'Inventory', 'Procurement', 'Financial', 'Production', 'Customer', 'Employee', 'Analytics', 'Custom'],
+      modules: ['Executive', 'Sales', 'Customer', 'Inventory', 'Procurement', 'Manufacturing', 'Financial', 'Payroll', 'Tax', 'Delivery', 'Employee', 'Analytics', 'Custom'],
+      formats: reportFormats,
+      categories: ['Sales Reports', 'Customer Reports', 'Inventory Reports', 'Procurement Reports', 'Manufacturing Reports', 'Finance Reports', 'Payroll Reports', 'Tax Reports', 'Delivery Reports', 'Executive Reports', 'Custom Reports', 'Scheduled Reports', 'Templates', 'Archive'],
       kpis: [
         { label: 'Filtered Records', value: rows.length },
         { label: 'Total Value', value: Math.round(totalValue), type: 'money' },
@@ -1711,6 +1728,22 @@ const api = {
       content = metadata + csv;
       mimeType = 'application/vnd.ms-excel;charset=utf-8';
       extension = 'xls';
+    } else if (fmt === 'JSON') {
+      content = JSON.stringify({ metadata: center.filters, report: report.name, generatedAt: stamp, rows: center.rows }, null, 2);
+      mimeType = 'application/json;charset=utf-8';
+      extension = 'json';
+    } else if (fmt === 'XML') {
+      content = `<?xml version="1.0" encoding="UTF-8"?><report name="${report.name}" generatedAt="${stamp}">${center.rows.map(row => `<row>${Object.entries(row).map(([k, v]) => `<${k}>${String(v ?? '').replace(/[<>&]/g, '')}</${k}>`).join('')}</row>`).join('')}</report>`;
+      mimeType = 'application/xml;charset=utf-8';
+      extension = 'xml';
+    } else if (fmt === 'Word') {
+      content = metadata + csv;
+      mimeType = 'application/msword;charset=utf-8';
+      extension = 'doc';
+    } else if (fmt === 'Email Package' || fmt === 'ZIP Bundle') {
+      content = `REPORT PACKAGE\n\n${metadata}\nIncluded files:\n- ${baseName}.csv\n- ${baseName}.pdf.html\n- ${baseName}.json\n\n${csv}`;
+      mimeType = 'text/plain;charset=utf-8';
+      extension = fmt === 'ZIP Bundle' ? 'zip.txt' : 'email-package.txt';
     } else if (fmt === 'PDF' || fmt === 'PowerPoint' || fmt === 'Print') {
       const rows = center.rows.slice(0, 80);
       content = `<!doctype html><html><head><meta charset="utf-8"><title>${report.name}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{color:#006400}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left}.meta{color:#555;margin-bottom:24px}.sign{margin-top:48px;display:flex;gap:60px}.sign div{border-top:1px solid #111;padding-top:8px;width:220px}@media print{button{display:none}}</style></head><body><h1>${report.name}</h1><div class="meta">${metadata.replaceAll('\n','<br>')}</div><table><thead><tr>${Object.keys(rows[0] || {}).map(k => `<th>${k}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${Object.values(row).map(v => `<td>${String(v ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="sign"><div>Prepared By</div><div>Reviewed By</div><div>Approved By</div></div></body></html>`;
