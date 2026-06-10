@@ -658,3 +658,34 @@ Verification:
 - Ran `npm run build`.
 - Build completed without the previous chunk-size warning.
 - Output chunks included `index` around 100 KB, `recharts-vendor` around 340 KB, `react-vendor` around 172 KB, `d3-vendor` around 63 KB, and `icons-vendor` around 14 KB.
+
+## 2026-06-10 - Input Overlay, Time Filters, and Responsive Topbar Upgrade
+
+Target area:
+Global data entry, Analytics filters, Reports date controls, mobile topbar, typography
+
+Reason:
+The top `New` action needed to open real input workflows from every page. Analytics tabs and report date controls needed visible weekly/monthly/quarterly/yearly switching and custom date ranges. The topbar also needed to stay usable on smaller screens.
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+- `api/rpc.js`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Changed the main UI font to a softer Aptos/Segoe UI stack while keeping numeric values in Bahnschrift.
+- Added a global `New ERP Record` overlay that works from any page.
+- Added live input modules for customers, suppliers, products, inventory, sales orders, purchase requests, expenses, payments, journals, tasks, production jobs, and raw material receipts.
+- Added Supabase-backed raw material receipt routing through `submitERPInput`, including UOM conversion such as `500 KG -> 500,000 G`.
+- Added lookup support for units of measure, warehouses, raw materials, production orders, accounts, customers, suppliers, products, and invoices.
+- Added visible Analytics period controls for Weekly, Monthly, Quarterly, and Yearly plus custom `From` and `To` dates.
+- Updated Analytics backend filtering so selected periods/date ranges change the returned data and trend labels.
+- Added report quick-range controls for Weekly, Monthly, Quarterly, and Yearly alongside custom start/end dates.
+- Reworked mobile topbar behavior so search, period controls, notifications, New, and user button wrap instead of disappearing.
+
+Verification:
+- Ran `node --check api/rpc.js`.
+- Ran `npm run build`.
+- Ran RPC workflow checks for login, input metadata, raw material receipt, sales order creation, analytics weekly filtering, and report CSV export.
+- Local HTTP check returned `200` from `http://127.0.0.1:5173`.

@@ -115,6 +115,7 @@ function App() {
   });
   const [page, setPage] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inputOpen, setInputOpen] = useState(false);
 
   if (!user) return <Login onLogin={u => {
     localStorage.setItem('farmtrack-user', JSON.stringify(u));
@@ -125,7 +126,7 @@ function App() {
     <div className="app-shell">
       <Sidebar page={page} setPage={setPage} open={sidebarOpen} setOpen={setSidebarOpen} user={user} />
       <main className="main-shell">
-        <Topbar user={user} onMenu={() => setSidebarOpen(true)} onLogout={() => {
+        <Topbar user={user} onMenu={() => setSidebarOpen(true)} onNew={() => setInputOpen(true)} onLogout={() => {
           localStorage.removeItem('farmtrack-user');
           setUser(null);
         }} />
@@ -143,6 +144,7 @@ function App() {
           {page === 'settings' && <SettingsPage user={user} />}
         </div>
       </main>
+      {inputOpen && <GlobalInputOverlay user={user} page={page} onClose={() => setInputOpen(false)} />}
     </div>
   );
 }
@@ -225,7 +227,8 @@ function Sidebar({ page, setPage, open, setOpen, user }) {
   );
 }
 
-function Topbar({ user, onMenu, onLogout }) {
+function Topbar({ user, onMenu, onNew, onLogout }) {
+  const [period, setPeriod] = useState('Month');
   return (
     <header className="topbar">
       <button className="menu-button" onClick={onMenu}><Menu size={22} /></button>
@@ -237,8 +240,11 @@ function Topbar({ user, onMenu, onLogout }) {
       <div className="topbar-actions">
         <button><Sparkles size={20} /></button>
         <button className="notify"><Bell size={20} /><span>3</span></button>
-        <button className="date-chip"><Calendar size={16} /> May 12 - Jun 12, 2026</button>
-        <button className="new-button" onClick={() => window.dispatchEvent(new CustomEvent('farmtrack:new-record'))}><Plus size={18} /> New</button>
+        <div className="date-chip topbar-period">
+          <Calendar size={16} />
+          {['Week', 'Month', 'Year'].map(item => <button key={item} className={period === item ? 'active' : ''} onClick={() => setPeriod(item)}>{item}</button>)}
+        </div>
+        <button className="new-button" onClick={onNew}><Plus size={18} /> New</button>
         <button className="logout" onClick={onLogout}>{user.name?.[0] || 'U'}</button>
       </div>
     </header>
@@ -340,12 +346,14 @@ function AnalyticsCenter({ user }) {
     ['forecasting', 'Forecasting']
   ];
   const [activeTab, setActiveTab] = useState('revenue');
-  const [tabFilters, setTabFilters] = useState({});
+  const [tabFilters, setTabFilters] = useState({ revenue: { ...defaultReportDates(), period: 'Monthly' } });
   const tabState = useServer(user, 'getAnalyticsTabData', [activeTab, tabFilters[activeTab] || {}], [activeTab, JSON.stringify(tabFilters[activeTab] || {})]);
   if (loading) return <Loading title="Analytics" />;
   if (error) return <ErrorState title="Analytics" error={error} />;
   if (tabState.error) return <ErrorState title="Analytics" error={tabState.error} />;
   const active = tabState.data;
+  const currentFilters = tabFilters[activeTab] || {};
+  const updateActiveFilter = patch => setTabFilters(prev => ({ ...prev, [activeTab]: { ...(prev[activeTab] || {}), ...patch } }));
   const colors = ['#050505', '#6d4aff', '#377dff', '#22c55e', '#ffac33', '#f64e4e'];
   return (
     <section className="page-stack analytics-page">
@@ -375,11 +383,10 @@ function AnalyticsCenter({ user }) {
       {active && (
         <>
           <div className="analytics-filter-bar">
-            {['dateRange', 'products', 'customers', 'regions', 'salesReps'].map(key => (
-              <button key={key} onClick={() => setTabFilters(prev => ({ ...prev, [activeTab]: { ...(prev[activeTab] || {}), [key]: active.filters[key] } }))}>
-                {label(key)}: {active.filters[key]}
-              </button>
-            ))}
+            {['Weekly', 'Monthly', 'Quarterly', 'Yearly'].map(period => <button key={period} className={currentFilters.period === period ? 'active' : ''} onClick={() => updateActiveFilter({ period })}>{period}</button>)}
+            <label>From<input type="date" value={currentFilters.startDate || ''} onChange={e => updateActiveFilter({ startDate: e.target.value })} /></label>
+            <label>To<input type="date" value={currentFilters.endDate || ''} onChange={e => updateActiveFilter({ endDate: e.target.value })} /></label>
+            {['products', 'customers', 'regions', 'salesReps'].map(key => <button key={key}>{label(key)}: {active.filters[key]}</button>)}
             <span>{tabState.loading ? 'Refreshing...' : `Last refresh ${new Date(active.lastRefresh).toLocaleTimeString()}`}</span>
           </div>
 
@@ -2087,8 +2094,19 @@ function FinancePaymentModal({ user, receivables, onClose, onSaved }) {
 }
 
 function ReportDateControls({ filters, setFilters }) {
+  const applyPeriod = days => {
+    setFilters({
+      ...filters,
+      startDate: new Date(Date.now() - days * 86400000).toISOString().slice(0, 10),
+      endDate: new Date().toISOString().slice(0, 10)
+    });
+  };
   return (
     <div className="report-filter-bar">
+      <button type="button" onClick={() => applyPeriod(7)}>Weekly</button>
+      <button type="button" onClick={() => applyPeriod(30)}>Monthly</button>
+      <button type="button" onClick={() => applyPeriod(90)}>Quarterly</button>
+      <button type="button" onClick={() => applyPeriod(365)}>Yearly</button>
       <label>Start Date<input type="date" value={filters.startDate || ''} onChange={e => setFilters({ ...filters, startDate: e.target.value })} /></label>
       <label>End Date<input type="date" value={filters.endDate || ''} onChange={e => setFilters({ ...filters, endDate: e.target.value })} /></label>
     </div>
@@ -2230,29 +2248,136 @@ function ReportScheduleModal({ user, filters, reportName, onClose }) {
   );
 }
 
+const pageInputDefaults = {
+  sales: 'sale',
+  purchasing: 'purchaseRequest',
+  inventory: 'inventory',
+  finance: 'expense',
+  production: 'rawMaterial',
+  customers: 'customer',
+  reports: 'journal',
+  analytics: 'sale',
+  dashboard: 'sale'
+};
+
+function lookupForInput(data, key) {
+  if (key === 'customerId') return data.lookups.customers;
+  if (key === 'supplierId') return data.lookups.suppliers;
+  if (key === 'productId') return data.lookups.products;
+  if (key === 'invoiceId') return data.lookups.invoices;
+  if (key === 'debitAccountId' || key === 'creditAccountId') return data.lookups.accounts;
+  if (key === 'warehouseName' || key === 'warehouse') return data.lookups.warehouses;
+  if (key === 'unit') return data.lookups.uoms;
+  if (key === 'materialId') return data.lookups.rawMaterials;
+  if (key === 'productionOrderId') return data.lookups.productionOrders;
+  return null;
+}
+
+function inputKind(field) {
+  const key = field.toLowerCase();
+  if (key.includes('date')) return 'date';
+  if (['amount', 'quantity', 'price', 'stock', 'cost', 'paid', 'limit', 'qty'].some(x => key.includes(x))) return 'number';
+  if (key.includes('email')) return 'email';
+  return 'text';
+}
+
+function isRequiredInput(field) {
+  const key = field.toLowerCase();
+  return ['name', 'amount', 'quantity', 'productname', 'materialname', 'title', 'customerid', 'productid'].some(x => key.includes(x));
+}
+
+function GlobalInputOverlay({ user, page, onClose }) {
+  const [module, setModule] = useState(pageInputDefaults[page] || 'customer');
+  const [form, setForm] = useState({});
+  const [result, setResult] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getInputCenterData', [], [refreshKey]);
+  const active = data?.modules?.find(x => x.id === module) || data?.modules?.[0];
+
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setResult(null);
+    try {
+      const response = await rpc('submitERPInput', [user, module, form]);
+      setResult(response);
+      setForm({});
+      setRefreshKey(x => x + 1);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <section className="modal-card input-overlay-card">
+        <header>
+          <div>
+            <h2>New ERP Record</h2>
+            <p>Create live records without leaving this page.</p>
+          </div>
+          <button type="button" onClick={onClose}><X size={18} /></button>
+        </header>
+        {loading && <div className="loading-card"><Loader2 className="spin" /> Loading input types...</div>}
+        {error && <div className="error-card"><AlertTriangle size={18} /> {error}</div>}
+        {active && (
+          <>
+            <div className="quick-input-modules">
+              {data.modules.map(item => <button key={item.id} className={module === item.id ? 'active' : ''} onClick={() => { setModule(item.id); setForm({}); setResult(null); }}>{item.label}</button>)}
+            </div>
+            <form className="input-form-grid quick-input-form" onSubmit={submit}>
+              {active.fields.map(field => {
+                const lookup = lookupForInput(data, field);
+                const value = form[field] || '';
+                return (
+                  <label key={field}>{label(field)}
+                    {lookup ? (
+                      <select value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required={isRequiredInput(field)}>
+                        <option value="">Select {label(field)}</option>
+                        {lookup.map(option => <option key={option.id || option.name} value={option.id || option.name}>{option.name}</option>)}
+                      </select>
+                    ) : (
+                      <input type={inputKind(field)} value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required={isRequiredInput(field)} />
+                    )}
+                  </label>
+                );
+              })}
+              <button className="primary-action" disabled={saving}>{saving ? 'Submitting...' : `Submit ${active.label}`}</button>
+            </form>
+            {result && (
+              <div className="quick-input-result">
+                <CheckCircle2 size={18} />
+                <div>
+                  <strong>{active.label} saved</strong>
+                  <span>{result.saleNo || result.deliveryId || result.invoiceId || result.id || 'Record created and synced'}</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
 function InputCenter({ user }) {
   const [module, setModule] = useState('customer');
   const [form, setForm] = useState({});
   const [refreshKey, setRefreshKey] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null);
   const { loading, data, error } = useServer(user, 'getInputCenterData', [], [refreshKey]);
   if (loading) return <Loading title="Inputs" />;
   if (error) return <ErrorState title="Inputs" error={error} />;
   const active = data.modules.find(x => x.id === module) || data.modules[0];
-  const lookupFor = key => {
-    if (key === 'customerId') return data.lookups.customers;
-    if (key === 'supplierId') return data.lookups.suppliers;
-    if (key === 'productId') return data.lookups.products;
-    if (key === 'invoiceId') return data.lookups.invoices;
-    if (key === 'debitAccountId' || key === 'creditAccountId') return data.lookups.accounts;
-    if (key === 'warehouseName') return data.lookups.warehouses;
-    return null;
-  };
   async function submit(e) {
     e.preventDefault();
     setSaving(true);
+    setResult(null);
     try {
-      await rpc('submitERPInput', [user, module, form]);
+      const response = await rpc('submitERPInput', [user, module, form]);
+      setResult(response);
       setForm({});
       setRefreshKey(x => x + 1);
     } finally {
@@ -2276,13 +2401,13 @@ function InputCenter({ user }) {
       <div className="dashboard-grid">
         <Panel className="span-5" title="Input Type">
           <div className="input-type-grid">
-            {data.modules.map(item => <button key={item.id} className={module === item.id ? 'active' : ''} onClick={() => { setModule(item.id); setForm({}); }}>{item.label}</button>)}
+            {data.modules.map(item => <button key={item.id} className={module === item.id ? 'active' : ''} onClick={() => { setModule(item.id); setForm({}); setResult(null); }}>{item.label}</button>)}
           </div>
         </Panel>
         <Panel className="span-7" title={`${active.label} Form`} action="Validated submit">
           <form className="input-form-grid" onSubmit={submit}>
             {active.fields.map(field => {
-              const lookup = lookupFor(field);
+              const lookup = lookupForInput(data, field);
               const value = form[field] || '';
               return (
                 <label key={field}>{label(field)}
@@ -2292,13 +2417,14 @@ function InputCenter({ user }) {
                       {lookup.map(option => <option key={option.id || option.name} value={option.id || option.name}>{option.name}</option>)}
                     </select>
                   ) : (
-                    <input type={field.toLowerCase().includes('date') ? 'date' : field.toLowerCase().includes('amount') || field.toLowerCase().includes('quantity') || field.toLowerCase().includes('price') || field.toLowerCase().includes('stock') || field.toLowerCase().includes('cost') || field.toLowerCase().includes('paid') || field.toLowerCase().includes('limit') ? 'number' : 'text'} value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required={['name', 'amount', 'quantity', 'productName', 'title'].some(x => field.includes(x))} />
+                    <input type={inputKind(field)} value={value} onChange={e => setForm({ ...form, [field]: e.target.value })} required={isRequiredInput(field)} />
                   )}
                 </label>
               );
             })}
             <button className="primary-action" disabled={saving}>{saving ? 'Submitting...' : `Submit ${active.label}`}</button>
           </form>
+          {result && <div className="quick-input-result inline-result"><CheckCircle2 size={18} /><div><strong>{active.label} saved</strong><span>{result.saleNo || result.deliveryId || result.invoiceId || result.id || 'Record created and synced'}</span></div></div>}
         </Panel>
         <Panel className="span-6" title="Recent Business Events"><SimpleTable rows={data.recentEvents} columns={['eventType', 'aggregateType', 'aggregateId', 'status', 'createdByName', 'createdAt']} /></Panel>
         <Panel className="span-6" title="Input Audit Trail"><SimpleTable rows={data.audit} columns={['userName', 'action', 'module', 'details', 'createdAt']} /></Panel>

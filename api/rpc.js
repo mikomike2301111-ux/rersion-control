@@ -1443,21 +1443,31 @@ const api = {
     const base = await api.getAnalyticsData(user);
     const d = data();
     const id = String(tabId || 'revenue').toLowerCase();
-    const sales = list('sales');
-    const invoices = list('invoices');
+    const periodDays = { Weekly: 7, Monthly: 30, Quarterly: 90, Yearly: 365 };
+    const endDate = filters.endDate || today();
+    const startDate = filters.startDate || new Date(Date.now() - (periodDays[filters.period] || 30) * 86400000).toISOString().slice(0, 10);
+    const scope = { ...filters, startDate, endDate };
+    const sales = list('sales').filter(row => inDateRange(row, scope));
+    const invoices = list('invoices').filter(row => inDateRange(row, scope));
+    const saleIds = new Set(sales.map(x => x.id));
+    const scopedSaleItems = d.saleItems.filter(item => saleIds.has(item.saleId));
     const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
-    const cogs = d.saleItems.reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
-    const expenses = d.expenses.reduce((sum, item) => sum + num(item.amount), 0);
+    const cogs = scopedSaleItems.reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
+    const expenses = d.expenses.filter(row => inDateRange(row, scope)).reduce((sum, item) => sum + num(item.amount), 0);
     const profit = revenue - cogs - expenses;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const trend = months.map((month, index) => {
-      const monthRevenue = sales.filter((_, i) => i % months.length === index).reduce((sum, sale) => sum + num(sale.total), 0) || Math.round(revenue / months.length);
+    const labels = filters.period === 'Weekly'
+      ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      : filters.period === 'Yearly'
+        ? ['Q1', 'Q2', 'Q3', 'Q4']
+        : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const trend = labels.map((month, index) => {
+      const monthRevenue = sales.filter((_, i) => i % labels.length === index).reduce((sum, sale) => sum + num(sale.total), 0) || Math.round(revenue / Math.max(1, labels.length));
       return {
         month,
         revenue: Math.round(monthRevenue),
         profit: Math.round(monthRevenue * 0.31),
-        orders: sales.filter((_, i) => i % months.length === index).length,
-        invoices: invoices.filter((_, i) => i % months.length === index).length,
+        orders: sales.filter((_, i) => i % labels.length === index).length,
+        invoices: invoices.filter((_, i) => i % labels.length === index).length,
         pipeline: Math.round(d.leads.reduce((sum, lead) => sum + num(lead.value), 0) * (0.7 + index * 0.05)),
         forecast: Math.round(monthRevenue * (1.08 + index * 0.01))
       };
@@ -1577,7 +1587,10 @@ const api = {
       tabId: id,
       tabName: config.title,
       filters: {
-        dateRange: filters.dateRange || 'May 12 - Jun 12, 2026',
+        dateRange: `${startDate} to ${endDate}`,
+        period: filters.period || 'Monthly',
+        startDate,
+        endDate,
         products: filters.products || 'All Products',
         customers: filters.customers || 'All Customers',
         regions: filters.regions || 'All Regions',
@@ -1591,7 +1604,7 @@ const api = {
       waterfall: base.revenueWaterfall,
       heatmap: base.revenueHeatmap,
       breakdown: id === 'customer' ? base.customerIntelligence.map(c => ({ name: c.name, value: c.lifetimeValue })) : base.revenueBreakdown,
-      reports: config.reports.map(name => ({ name, dateRange: filters.dateRange || 'May 12 - Jun 12, 2026', exports: ['PDF', 'Excel', 'CSV', 'PowerPoint'], records: sales.length + invoices.length })),
+      reports: config.reports.map(name => ({ name, dateRange: `${startDate} to ${endDate}`, exports: ['PDF', 'Excel', 'CSV', 'PowerPoint'], records: sales.length + invoices.length })),
       insights: [
         { question: `${config.title} status`, answer: config.insight, records: base.hero.dataSources || [] },
         { question: 'Data refresh', answer: `Tab refreshed at ${new Date().toISOString()}. Filters were preserved for this tab.`, records: ['analytics_tabs', 'analytics_filters', 'analytics_state'] }
@@ -1743,7 +1756,8 @@ const api = {
         { id: 'payment', label: 'Customer Payment', fields: ['invoiceId', 'amount', 'method'] },
         { id: 'journal', label: 'Manual Journal', fields: ['date', 'amount', 'description', 'reference', 'debitAccountId', 'creditAccountId'] },
         { id: 'task', label: 'Task', fields: ['title', 'description', 'assignedTo', 'dueDate', 'priority', 'module'] },
-        { id: 'production', label: 'Production Job', fields: ['productName', 'plannedQty', 'startDate', 'assignedTo', 'notes'] }
+        { id: 'production', label: 'Production Job', fields: ['productName', 'plannedQty', 'startDate', 'assignedTo', 'notes'] },
+        { id: 'rawMaterial', label: 'Raw Material Receipt', fields: ['materialName', 'materialCode', 'category', 'quantity', 'unit', 'costPerUnit', 'supplier', 'warehouse', 'storageLocation', 'expiryDate'] }
       ],
       lookups: {
         customers: list('customers').map(x => ({ id: x.id, name: x.name })),
@@ -1751,7 +1765,10 @@ const api = {
         products: list('products').map(x => ({ id: x.id, name: x.name, sku: x.sku, price: num(x.sellingPrice), cost: num(x.costPrice) })),
         invoices: list('invoices').filter(x => num(x.balance) > 0).map(x => ({ id: x.id, name: `${x.invNo} - ${x.customerName} - ${money(x.balance)}` })),
         accounts: (d.financeAccounts || []).map(x => ({ id: x.id, name: `${x.code} - ${x.name}` })),
-        warehouses: (d.inventoryWarehouses || [{ name: 'Main Store Nairobi' }]).map(x => ({ id: x.id || x.name, name: x.name }))
+        warehouses: (d.inventoryWarehouses || [{ name: 'Main Store Nairobi' }]).map(x => ({ id: x.id || x.name, name: x.name })),
+        uoms: (d.unitOfMeasure || []).map(x => ({ id: x.code || x.name, name: `${x.name || x.code} (${x.code || x.name})` })),
+        rawMaterials: (d.rawMaterials || []).map(x => ({ id: x.id, name: `${x.materialName} - ${x.availableQuantity}${x.unitOfMeasure}` })),
+        productionOrders: (d.productionOrders || []).map(x => ({ id: x.id, name: `${x.orderNo} - ${x.productName} - ${x.status}` }))
       },
       recentEvents: (d.businessEvents || []).slice(0, 20),
       audit: d.activity.slice(0, 20)
@@ -1781,6 +1798,7 @@ const api = {
     else if (type === 'journal') result = api.postManualJournal(u, payload);
     else if (type === 'task') result = api.saveTask(u, payload);
     else if (type === 'production') result = api.saveProductionJob(u, { status: 'Pending', ...payload });
+    else if (type === 'rawMaterial') result = api.receiveRawMaterial(u, payload);
     else throw new Error('Unsupported input module: ' + type);
     const aggregateId = result?.id || result?.row?.id || result?.entry?.id || result?.request?.id || result?.saleNo || gid();
     emitBusinessEvent(u, `input.${type}.submitted`, type, aggregateId, payload);

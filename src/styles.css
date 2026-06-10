@@ -14,7 +14,7 @@ body {
   margin: 0;
   background: #fff;
   color: var(--text);
-  font-family: Candara, "Segoe UI", Arial, sans-serif;
+  font-family: Aptos, "Segoe UI Variable", "Segoe UI", Candara, Arial, sans-serif;
   font-weight: 500;
 }
 button, input, select, textarea { font: inherit; }
@@ -110,6 +110,9 @@ em,
 .notify { position: relative; }
 .notify span { position: absolute; top: -7px; right: -8px; background: #050505; color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; display: grid; place-items: center; }
 .date-chip { border: 1px solid #e7e9ee; border-radius: 10px; padding: 0 12px; }
+.topbar-period { min-height: 42px; display: inline-flex; align-items: center; gap: 6px; background: #fff; }
+.topbar-period button { height: 28px; border-radius: 7px; padding: 0 8px; font-size: 12px; color: #344054; }
+.topbar-period button.active { background: #050505; color: #fff; }
 .new-button { background: #050505; color: #fff !important; border-radius: 9px; padding: 0 16px; }
 .logout { width: 42px; height: 42px; }
 .content-grid { padding: 0 36px 32px; }
@@ -215,6 +218,12 @@ em,
   min-height: 36px; border: 1px solid var(--line); border-radius: 999px; padding: 0 12px;
   background: #fff; color: #344054; font-size: 12px; font-weight: 800;
 }
+.analytics-filter-bar button.active { background: #050505; color: #fff; border-color: #050505; }
+.analytics-filter-bar label {
+  min-height: 38px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px;
+  display: inline-flex; align-items: center; gap: 8px; color: #344054; font-size: 12px; font-weight: 900; background: #fff;
+}
+.analytics-filter-bar input { height: 28px; border: 0; outline: 0; color: #101828; background: transparent; }
 .analytics-filter-bar span { color: var(--muted); font-size: 12px; margin-left: auto; }
 .analytics-kpi-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .analytics-kpi-row article { border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: #fff; padding: 16px; }
@@ -377,6 +386,11 @@ em,
 .report-filter-bar { padding: 8px 20px 18px; display: flex; flex-wrap: wrap; gap: 12px; }
 .report-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .report-filter-bar label { color: var(--muted); font-size: 12px; display: grid; gap: 7px; font-weight: 800; min-width: 180px; }
+.report-filter-bar button {
+  min-height: 40px; border: 1px solid var(--line); border-radius: 999px; padding: 0 12px; background: #fff;
+  color: #344054; font-size: 12px; font-weight: 900;
+}
+.report-filter-bar button:hover { background: #050505; color: #fff; border-color: #050505; }
 .report-filter-bar input, .report-filter-bar select {
   height: 40px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: #fff; color: var(--text);
 }
@@ -592,6 +606,22 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
 .modal-card input, .modal-card select { height: 42px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; color: var(--text); background: #fff; }
 .modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .primary-action { height: 42px; border-radius: 10px; background: #050505; color: #fff; font-weight: 900; }
+.input-overlay-card { width: min(920px, 100%); max-height: min(88vh, 820px); overflow: auto; }
+.input-overlay-card header p { margin: 5px 0 0; color: #667085; font-size: 13px; font-weight: 700; }
+.quick-input-modules { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.quick-input-modules button {
+  flex: 0 0 auto; min-height: 36px; border: 1px solid var(--line); border-radius: 999px; padding: 0 12px;
+  color: #344054; background: #fff; font-weight: 900;
+}
+.quick-input-modules button.active, .quick-input-modules button:hover { background: #050505; color: #fff; border-color: #050505; }
+.quick-input-form { padding: 0; }
+.quick-input-result {
+  min-height: 48px; border: 1px solid #c7f2d4; border-radius: 12px; background: #effdf3; color: #067647;
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+}
+.quick-input-result strong, .quick-input-result span { display: block; }
+.quick-input-result span { margin-top: 2px; color: #067647; font-size: 12px; font-weight: 800; }
+.inline-result { margin: 0 20px 20px; }
 .mobile-scrim { display: none; }
 @media (max-width: 1280px) {
   .kpi-grid, .control-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -643,13 +673,13 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
   .modal-grid { grid-template-columns: 1fr; }
 }
 
-/* Candara readability pass: keep layout intact, strengthen thin captions/table/form text. */
+/* Soft UI typography pass: keep layout intact, strengthen thin captions/table/form text. */
 body,
 button,
 input,
 select,
 textarea {
-  font-family: Candara, "Segoe UI", Arial, sans-serif;
+  font-family: Aptos, "Segoe UI Variable", "Segoe UI", Candara, Arial, sans-serif;
 }
 body { font-weight: 500; }
 .sidebar-brand span,
@@ -725,7 +755,7 @@ em,
   font-weight: 700;
 }
 
-/* Numeric values keep the previous Bahnschrift feel while text remains Candara. */
+/* Numeric values keep the previous Bahnschrift feel while text uses the softer UI stack. */
 .kpi-card h3,
 .sales-hero-stats strong,
 .change,
@@ -753,4 +783,40 @@ td,
 option {
   font-family: Bahnschrift, "Bahnschrift SemiCondensed", "Segoe UI", Arial, sans-serif;
   font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: auto 1fr;
+    height: auto;
+    padding: 14px 16px;
+    align-items: start;
+  }
+  .command-search {
+    grid-column: 2;
+    min-width: 0;
+  }
+  .topbar-actions {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .topbar-actions > button,
+  .topbar-period {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .topbar-actions .notify,
+  .topbar-actions > button:first-child,
+  .logout {
+    flex: 0 0 42px;
+  }
+  .new-button {
+    min-width: 120px;
+  }
+  .input-overlay-card {
+    max-height: 94vh;
+  }
 }
