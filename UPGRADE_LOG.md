@@ -190,6 +190,35 @@ Verification:
 Notes / next steps:
 - If a licensed Universal Sans font file is supplied later, add it through `@font-face` for exact rendering.
 
+## 2026-06-10 - Unity ERP Brand and Collapsible Sidebar
+
+Target area:
+Branding, browser metadata, sidebar navigation
+
+Reason:
+The top-left brand needed to read Unity / ERP, the browser needed the ERP logo, and the side panel needed a stable retract/expand control.
+
+Files changed:
+- `index.html`
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Changed the browser title to `Unity ERP`.
+- Added the ERP logo as favicon and Apple touch icon.
+- Updated the sidebar brand to show the logo with `Unity` and `ERP` underneath.
+- Added a desktop sidebar retract/expand button with persisted state.
+- Removed hover translation that caused sidebar twitching.
+- Added responsive safeguards so the mobile drawer stays full width even when desktop collapsed mode is active.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+
+Notes / next steps:
+- A transparent/cropped version of the logo can make the small collapsed icon even sharper.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

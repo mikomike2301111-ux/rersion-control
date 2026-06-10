@@ -144,6 +144,7 @@ function App() {
   });
   const [page, setPageState] = useState(pageFromRoute);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('farmtrack-sidebar-collapsed') === 'true');
   const [inputOpen, setInputOpen] = useState(false);
   const setPage = next => {
     setPageState(next);
@@ -156,6 +157,9 @@ function App() {
     if (!window.location.hash) window.history.replaceState(null, '', `#/${routeForPage(page)}`);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+  useEffect(() => {
+    localStorage.setItem('farmtrack-sidebar-collapsed', sidebarCollapsed ? 'true' : 'false');
+  }, [sidebarCollapsed]);
 
   if (!user) return <Login onLogin={u => {
     localStorage.setItem('farmtrack-user', JSON.stringify(u));
@@ -163,10 +167,10 @@ function App() {
   }} />;
 
   return (
-    <div className="app-shell">
-      <Sidebar page={page} setPage={setPage} open={sidebarOpen} setOpen={setSidebarOpen} user={user} />
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <Sidebar page={page} setPage={setPage} open={sidebarOpen} setOpen={setSidebarOpen} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} user={user} />
       <main className="main-shell">
-        <Topbar user={user} onMenu={() => setSidebarOpen(true)} onNew={() => setInputOpen(true)} onLogout={() => {
+        <Topbar user={user} onMenu={() => setSidebarOpen(true)} onToggleSidebar={() => setSidebarCollapsed(v => !v)} sidebarCollapsed={sidebarCollapsed} onNew={() => setInputOpen(true)} onLogout={() => {
           localStorage.removeItem('farmtrack-user');
           setUser(null);
         }} />
@@ -231,12 +235,19 @@ function Login({ onLogin }) {
   );
 }
 
-function Sidebar({ page, setPage, open, setOpen, user }) {
+function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user }) {
   return (
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <img src="/erp-logo-black.png" alt="Farmtrack ERP logo" />
+          <div className="sidebar-brand-text">
+            <strong>Unity</strong>
+            <small>ERP</small>
+          </div>
+          <button className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <ChevronDown size={17} />
+          </button>
         </div>
         <nav>
           {nav.map(item => {
@@ -247,7 +258,7 @@ function Sidebar({ page, setPage, open, setOpen, user }) {
                 setOpen(false);
               }}>
                 <Icon size={20} />
-                {item.label}
+                <span>{item.label}</span>
               </button>
             );
           })}
@@ -266,11 +277,12 @@ function Sidebar({ page, setPage, open, setOpen, user }) {
   );
 }
 
-function Topbar({ user, onMenu, onNew, onLogout }) {
+function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogout }) {
   const [period, setPeriod] = useState('Month');
   return (
     <header className="topbar">
       <button className="menu-button" onClick={onMenu}><Menu size={22} /></button>
+      <button className="desktop-sidebar-toggle" onClick={onToggleSidebar}>{sidebarCollapsed ? 'Expand' : 'Retract'}</button>
       <div className="command-search">
         <Search size={18} />
         <input placeholder="Search anything..." />
