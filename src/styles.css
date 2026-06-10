@@ -78,7 +78,8 @@ em,
   position: fixed; inset: 0 auto 0 0; width: 280px; background: #020304; color: #fff;
   padding: 36px 18px 24px; display: flex; flex-direction: column; z-index: 20;
 }
-.sidebar-brand { height: 82px; display: flex; align-items: flex-start; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.sidebar-brand { height: 96px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid rgba(255,255,255,.1); }
+.sidebar-brand img { width: 148px; max-height: 76px; object-fit: contain; display: block; }
 .sidebar-brand span { font-size: 42px; line-height: 1; letter-spacing: .5px; font-weight: 500; }
 .sidebar nav { padding-top: 20px; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
 .sidebar nav button {
@@ -873,7 +874,8 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
 .login-screen { min-height: 100vh; background: #050505; display: grid; place-items: center; padding: 24px; }
 .login-panel { width: min(440px, 100%); background: #fff; border-radius: 18px; padding: 32px; box-shadow: 0 30px 80px rgba(0,0,0,.32); }
 .brand-lockup { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
-.brand-mark { width: 74px; height: 74px; border-radius: 18px; background: #050505; color: #fff; display: grid; place-items: center; font-size: 24px; }
+.brand-mark { width: 86px; height: 86px; border-radius: 20px; background: #050505; color: #fff; display: grid; place-items: center; overflow: hidden; }
+.brand-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .brand-lockup h1 { margin: 0; font-size: 24px; }
 .brand-lockup p { margin: 6px 0 0; color: var(--muted); }
 .login-form { display: grid; gap: 16px; }

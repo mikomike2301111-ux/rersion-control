@@ -138,6 +138,33 @@ Verification:
 Notes / next steps:
 - The next upgrade can replace rule Configure quick-save actions with detailed modal editors for each policy.
 
+## 2026-06-10 - ERP Logo Branding Update
+
+Target area:
+Branding, login, sidebar
+
+Reason:
+The ERP should use the supplied black-and-gold horse logo instead of the temporary text mark.
+
+Files changed:
+- `public/erp-logo-black.png`
+- `src/main.jsx`
+- `src/styles.css`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added the supplied ERP logo as a public app asset.
+- Replaced the login page ERP text mark with the logo.
+- Replaced the sidebar text/icon mark with the logo.
+- Adjusted brand sizing and object-fit so the logo scales cleanly.
+
+Verification:
+- Ran `npm run build`.
+- Ran `node --check api/rpc.js`.
+
+Notes / next steps:
+- A transparent or cropped logo variant would improve small-sidebar readability further.
+
 ## 2026-06-09 - Componentized Vercel Frontend
 
 Target area:

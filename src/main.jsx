@@ -213,7 +213,7 @@ function Login({ onLogin }) {
     <div className="login-screen">
       <section className="login-panel">
         <div className="brand-lockup">
-          <div className="brand-mark">ERP</div>
+          <div className="brand-mark"><img src="/erp-logo-black.png" alt="Farmtrack ERP logo" /></div>
           <div>
             <h1>Farmtrack Enterprise</h1>
             <p>Connected agriculture operating system</p>
@@ -236,8 +236,7 @@ function Sidebar({ page, setPage, open, setOpen, user }) {
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <span>ERP</span>
-          <Package size={38} />
+          <img src="/erp-logo-black.png" alt="Farmtrack ERP logo" />
         </div>
         <nav>
           {nav.map(item => {
