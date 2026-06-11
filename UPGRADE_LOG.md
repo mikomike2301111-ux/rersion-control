@@ -33,6 +33,39 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-06-11 - Accounts Workspace Completion
+
+Target area:
+Accounts workspace, finance inputs, Supabase normalized accounting tables
+
+Reason:
+Accounts needed to move beyond read-only views into a working accounting control center with real inputs, balanced posting, bank activity, reports, and normalized Supabase accounting tables.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `src/styles.css`
+- `supabase-normalized-core.sql`
+- `UPGRADE_LOG.md`
+
+Improvements:
+- Added Accounts tabs for reconciliation and reports.
+- Added Accounts quick actions for manual journal, new chart account, bank transaction, customer payment, and reports.
+- Added chart-of-accounts creation from the Accounts page.
+- Added bank/cash transaction posting with balanced debit/credit journals.
+- Updated cash position and bank transactions to derive from all journal lines, including manual postings.
+- Preserved custom chart accounts when finance seed data refreshes.
+- Added normalized Supabase tables for finance accounts, journal lines, bank accounts, bank transactions, accounts receivable, and accounts payable.
+- Added accounting analytics views for accounts summary, trial balance, cash position, and AR/AP risk.
+- Added RLS service-role policies for all normalized Supabase core tables.
+
+Verification:
+- Ran the Accounts smoke test 10 times: account creation, bank transaction posting, manual journal posting, trial balance validation, and ERP integrity checks.
+- Ran `npm run check`.
+
+Notes / next steps:
+- Supabase REST cannot create tables. Run `supabase-normalized-core.sql` in Supabase SQL Editor, then use Settings > Supabase > Sync Normalized Tables.
+
 ## 2026-06-10 - Supabase Settings Control Panel
 
 Target area:

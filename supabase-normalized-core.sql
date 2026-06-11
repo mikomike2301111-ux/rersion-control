@@ -233,6 +233,19 @@ create table if not exists public.production_jobs (
   unique (tenant_id, job_no)
 );
 
+create table if not exists public.finance_accounts (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  code text not null,
+  name text not null,
+  type text not null check (type in ('Asset','Liability','Equity','Revenue','Expense')),
+  parent text,
+  status text not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (tenant_id, code)
+);
+
 create table if not exists public.journal_entries (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
@@ -251,6 +264,84 @@ create table if not exists public.journal_entries (
   check (total_debit = total_credit)
 );
 
+create table if not exists public.journal_lines (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  journal_entry_id uuid not null references public.journal_entries(id) on delete cascade,
+  account_id uuid references public.finance_accounts(id),
+  account_code text not null,
+  account_name text not null,
+  debit numeric(14,2) not null default 0,
+  credit numeric(14,2) not null default 0,
+  source_module text,
+  reference text,
+  line_date date not null default current_date,
+  created_at timestamptz not null default now(),
+  check (debit >= 0 and credit >= 0),
+  check (debit > 0 or credit > 0)
+);
+
+create table if not exists public.bank_accounts (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  account_name text not null,
+  bank text,
+  account_number text,
+  currency text not null default 'KES',
+  opening_balance numeric(14,2) not null default 0,
+  balance numeric(14,2) not null default 0,
+  status text not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.bank_transactions (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  bank_account_id uuid references public.bank_accounts(id),
+  transaction_date date not null default current_date,
+  account_name text not null,
+  reference text,
+  description text,
+  deposit numeric(14,2) not null default 0,
+  withdrawal numeric(14,2) not null default 0,
+  reconciled boolean not null default false,
+  created_at timestamptz not null default now(),
+  check (deposit >= 0 and withdrawal >= 0),
+  check (deposit > 0 or withdrawal > 0)
+);
+
+create table if not exists public.accounts_receivable (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  invoice_id uuid references public.invoices(id),
+  invoice_no text,
+  customer_name text not null,
+  due_date date,
+  total numeric(14,2) not null default 0,
+  paid numeric(14,2) not null default 0,
+  balance numeric(14,2) not null default 0,
+  aging_bucket text,
+  risk text,
+  status text not null default 'open',
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.accounts_payable (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  invoice_no text,
+  supplier_name text not null,
+  due_date date,
+  invoice_amount numeric(14,2) not null default 0,
+  paid_amount numeric(14,2) not null default 0,
+  outstanding_balance numeric(14,2) not null default 0,
+  aging_bucket text,
+  risk text,
+  payment_status text not null default 'open',
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.business_events (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
@@ -267,7 +358,12 @@ create index if not exists idx_products_tenant_status on public.products (tenant
 create index if not exists idx_inventory_items_tenant_product on public.inventory_items (tenant_id, product_id);
 create index if not exists idx_sales_orders_tenant_created on public.sales_orders (tenant_id, created_at desc);
 create index if not exists idx_invoices_tenant_status on public.invoices (tenant_id, status);
+create index if not exists idx_finance_accounts_tenant_type on public.finance_accounts (tenant_id, type);
 create index if not exists idx_journal_entries_tenant_date on public.journal_entries (tenant_id, journal_date desc);
+create index if not exists idx_journal_lines_tenant_account on public.journal_lines (tenant_id, account_code, line_date desc);
+create index if not exists idx_bank_transactions_tenant_date on public.bank_transactions (tenant_id, transaction_date desc);
+create index if not exists idx_accounts_receivable_tenant_status on public.accounts_receivable (tenant_id, status);
+create index if not exists idx_accounts_payable_tenant_status on public.accounts_payable (tenant_id, payment_status);
 
 create or replace view public.analytics_revenue_summary as
 select tenant_id,
@@ -309,6 +405,49 @@ select tenant_id,
 from public.purchase_orders
 group by tenant_id, supplier_id;
 
+create or replace view public.analytics_accounts_summary as
+select tenant_id,
+       coalesce(sum(case when total_debit = total_credit then total_debit else 0 end), 0) as posted_value,
+       count(*) as journal_count,
+       count(*) filter (where immutable is true) as immutable_journals,
+       count(*) filter (where total_debit <> total_credit) as unbalanced_journals
+from public.journal_entries
+group by tenant_id;
+
+create or replace view public.analytics_trial_balance as
+select tenant_id,
+       account_code,
+       account_name,
+       coalesce(sum(debit), 0) as debit,
+       coalesce(sum(credit), 0) as credit,
+       coalesce(sum(debit - credit), 0) as balance
+from public.journal_lines
+group by tenant_id, account_code, account_name;
+
+create or replace view public.analytics_cash_position as
+select tenant_id,
+       coalesce(sum(balance), 0) as cash_balance,
+       count(*) as bank_accounts
+from public.bank_accounts
+group by tenant_id;
+
+create or replace view public.analytics_ar_ap_risk as
+select tenant_id,
+       coalesce(sum(balance), 0) as receivables,
+       0::numeric as payables,
+       count(*) filter (where balance > 0) as open_items,
+       'receivable'::text as side
+from public.accounts_receivable
+group by tenant_id
+union all
+select tenant_id,
+       0::numeric as receivables,
+       coalesce(sum(outstanding_balance), 0) as payables,
+       count(*) filter (where outstanding_balance > 0) as open_items,
+       'payable'::text as side
+from public.accounts_payable
+group by tenant_id;
+
 create or replace view public.analytics_production_metrics as
 select tenant_id,
        product_id,
@@ -340,3 +479,21 @@ select t.id as tenant_id,
        coalesce((select count(*) from public.customers c where c.tenant_id = t.id), 0) as customers,
        coalesce((select count(*) from public.sales_orders so where so.tenant_id = t.id), 0) as orders
 from public.tenants t;
+
+do $$
+declare
+  table_name text;
+  tables text[] := array[
+    'erp_state','tenants','profiles','warehouses','customers','suppliers','products',
+    'inventory_items','inventory_transactions','sales_orders','sales_order_items',
+    'invoices','payments','purchase_orders','production_jobs','finance_accounts',
+    'journal_entries','journal_lines','bank_accounts','bank_transactions',
+    'accounts_receivable','accounts_payable','business_events'
+  ];
+begin
+  foreach table_name in array tables loop
+    execute format('alter table public.%I enable row level security', table_name);
+    execute format('drop policy if exists "Service role can manage %I" on public.%I', table_name, table_name);
+    execute format('create policy "Service role can manage %I" on public.%I for all to service_role using (true) with check (true)', table_name, table_name);
+  end loop;
+end $$;

@@ -57,8 +57,9 @@ const TENANT_ID = uuidFromString(`tenant:${TENANT_SLUG}`);
 const NORMALIZED_TABLES = [
   'tenants', 'profiles', 'customers', 'suppliers', 'products', 'warehouses',
   'inventory_items', 'inventory_transactions', 'sales_orders', 'sales_order_items',
-  'invoices', 'payments', 'purchase_orders', 'production_jobs', 'journal_entries',
-  'business_events'
+  'invoices', 'payments', 'purchase_orders', 'production_jobs',
+  'finance_accounts', 'journal_entries', 'journal_lines', 'bank_accounts',
+  'bank_transactions', 'accounts_receivable', 'accounts_payable', 'business_events'
 ];
 
 function uuidFromString(value) {
@@ -192,6 +193,28 @@ function normalizedRows() {
   const purchaseOrders = d.purchaseOrders || [];
   const productionJobs = d.productionOrders || d.production || [];
   const journalEntries = [...(d.financeJournalEntries || []), ...(d.financeManualJournals || [])];
+  const journalLines = [...(d.financeJournalLines || []), ...(d.financeManualJournalLines || [])];
+  const financeAccounts = d.financeAccounts || [];
+  const bankAccounts = d.bankAccounts || [];
+  const bankLineNames = ['KCB Bank', 'M-Pesa Till', 'Cash on Hand'];
+  const bankTransactions = [
+    ...(d.bankTransactions || []),
+    ...journalLines
+      .filter(l => bankLineNames.includes(l.accountName))
+      .map((l, index) => ({
+        id: `JBTX-${l.id || l.journalEntryId || l.reference || index}`,
+        accountName: l.accountName,
+        date: l.date,
+        reference: l.reference,
+        description: `${l.sourceModule || 'Finance'} ${l.reference || ''}`.trim(),
+        deposit: l.debit,
+        withdrawal: l.credit,
+        reconciled: Boolean(l.reconciled),
+        createdAt: l.createdAt
+      }))
+  ];
+  const receivables = d.accountsReceivable || [];
+  const payables = d.financeAccountsPayable || d.accountsPayable || [];
   const warehouseNames = Array.from(new Set([
     ...(d.inventoryWarehouses || []).map(x => x.name),
     ...inventory.map(x => x.warehouseName),
@@ -389,6 +412,17 @@ function normalizedRows() {
       created_at: job.createdAt || new Date().toISOString(),
       updated_at: job.updatedAt || new Date().toISOString()
     })).filter(x => x.product_id),
+    finance_accounts: financeAccounts.map((account, index) => ({
+      id: uuidFromString(`finance-account:${account.id || account.code || index}`),
+      tenant_id: TENANT_ID,
+      code: account.code || String(1000 + index * 10),
+      name: account.name || 'Unnamed Account',
+      type: account.type || 'Asset',
+      parent: account.parent || account.type || '',
+      status: statusText(account.status, 'active'),
+      created_at: account.createdAt || new Date().toISOString(),
+      updated_at: account.updatedAt || new Date().toISOString()
+    })),
     journal_entries: journalEntries.map((entry, index) => ({
       id: uuidFromString(`journal:${entry.id || entry.journalNo || index}`),
       tenant_id: TENANT_ID,
@@ -404,6 +438,75 @@ function normalizedRows() {
       immutable: true,
       created_at: entry.createdAt || new Date().toISOString()
     })).filter(x => Math.round(x.total_debit) === Math.round(x.total_credit)),
+    journal_lines: journalLines.map((line, index) => ({
+      id: uuidFromString(`journal-line:${line.id || line.journalEntryId || index}:${line.accountCode}`),
+      tenant_id: TENANT_ID,
+      journal_entry_id: uuidFromString(`journal:${line.journalEntryId || line.reference || index}`),
+      account_id: uuidFromString(`finance-account:${financeAccounts.find(a => a.code === line.accountCode)?.id || line.accountCode || line.accountName}`),
+      account_code: line.accountCode || '',
+      account_name: line.accountName || '',
+      debit: num(line.debit),
+      credit: num(line.credit),
+      source_module: line.sourceModule || '',
+      reference: line.reference || '',
+      line_date: line.date || today(),
+      created_at: line.createdAt || new Date().toISOString()
+    })).filter(x => x.account_code && (x.debit > 0 || x.credit > 0)),
+    bank_accounts: bankAccounts.map((account, index) => ({
+      id: uuidFromString(`bank-account:${account.id || account.accountNumber || account.accountName || index}`),
+      tenant_id: TENANT_ID,
+      account_name: account.accountName || 'Bank Account',
+      bank: account.bank || '',
+      account_number: account.accountNumber || '',
+      currency: account.currency || 'KES',
+      opening_balance: num(account.openingBalance),
+      balance: num(account.balance),
+      status: statusText(account.status, 'active'),
+      created_at: account.createdAt || new Date().toISOString(),
+      updated_at: account.updatedAt || new Date().toISOString()
+    })),
+    bank_transactions: bankTransactions.map((row, index) => ({
+      id: uuidFromString(`bank-transaction:${row.id || row.reference || index}`),
+      tenant_id: TENANT_ID,
+      bank_account_id: uuidFromString(`bank-account:${bankAccounts.find(a => a.accountName === row.accountName)?.id || row.accountName}`),
+      transaction_date: row.date || today(),
+      account_name: row.accountName || '',
+      reference: row.reference || '',
+      description: row.description || '',
+      deposit: num(row.deposit),
+      withdrawal: num(row.withdrawal),
+      reconciled: Boolean(row.reconciled),
+      created_at: row.createdAt || new Date().toISOString()
+    })).filter(x => x.account_name),
+    accounts_receivable: receivables.map((row, index) => ({
+      id: uuidFromString(`ar:${row.id || row.invoiceId || index}`),
+      tenant_id: TENANT_ID,
+      invoice_id: row.invoiceId ? uuidFromString(`invoice:${row.invoiceId}`) : null,
+      invoice_no: row.invNo || '',
+      customer_name: row.customerName || '',
+      due_date: row.dueDate || null,
+      total: num(row.total),
+      paid: num(row.paid),
+      balance: num(row.balance),
+      aging_bucket: row.agingBucket || '',
+      risk: row.risk || '',
+      status: statusText(row.status, 'open'),
+      updated_at: new Date().toISOString()
+    })),
+    accounts_payable: payables.map((row, index) => ({
+      id: uuidFromString(`ap:${row.id || row.supplierInvoiceId || row.invoiceNo || index}`),
+      tenant_id: TENANT_ID,
+      invoice_no: row.invoiceNo || '',
+      supplier_name: row.supplierName || '',
+      due_date: row.dueDate || null,
+      invoice_amount: num(row.invoiceAmount),
+      paid_amount: num(row.paidAmount),
+      outstanding_balance: num(row.outstandingBalance),
+      aging_bucket: row.agingBucket || '',
+      risk: row.risk || '',
+      payment_status: statusText(row.paymentStatus || row.status, 'open'),
+      updated_at: new Date().toISOString()
+    })),
     business_events: (d.businessEvents || []).map((event, index) => ({
       id: uuidFromString(`event:${event.id || index}`),
       tenant_id: TENANT_ID,
@@ -444,7 +547,13 @@ async function syncNormalizedSupabase(options = {}) {
     ['payments', rows.payments, 'tenant_id,payment_no'],
     ['purchase_orders', rows.purchase_orders, 'tenant_id,po_no'],
     ['production_jobs', rows.production_jobs, 'id'],
+    ['finance_accounts', rows.finance_accounts, 'tenant_id,code'],
     ['journal_entries', rows.journal_entries, 'tenant_id,journal_no'],
+    ['journal_lines', rows.journal_lines, 'id'],
+    ['bank_accounts', rows.bank_accounts, 'id'],
+    ['bank_transactions', rows.bank_transactions, 'id'],
+    ['accounts_receivable', rows.accounts_receivable, 'id'],
+    ['accounts_payable', rows.accounts_payable, 'id'],
     ['business_events', rows.business_events, 'id']
   ];
   const synced = {};
@@ -645,7 +754,15 @@ function ensureFinanceData() {
     ['5300', 'Utilities Expense', 'Expense'], ['5400', 'Marketing Expense', 'Expense'], ['5500', 'Inventory Loss Expense', 'Expense'],
     ['5600', 'Tax Expense', 'Expense']
   ];
-  db.financeAccounts = accountSeed.map(([code, name, type], index) => ({ id: `ACC-${index + 1}`, code, name, type, status: 'Active', parent: type }));
+  const existingAccounts = Array.isArray(db.financeAccounts) ? db.financeAccounts : [];
+  const byCode = new Map(existingAccounts.map(account => [String(account.code), account]));
+  db.financeAccounts = accountSeed.map(([code, name, type], index) => {
+    const existing = byCode.get(code);
+    return existing ? { ...existing, code, name: existing.name || name, type: existing.type || type, status: existing.status || 'Active', parent: existing.parent || type } : { id: `ACC-${index + 1}`, code, name, type, status: 'Active', parent: type };
+  });
+  existingAccounts
+    .filter(account => account.code && !accountSeed.some(([code]) => code === String(account.code)))
+    .forEach(account => db.financeAccounts.push(account));
   const acc = name => db.financeAccounts.find(a => a.name === name) || db.financeAccounts[0];
   const entries = [];
   const lines = [];
@@ -3592,12 +3709,31 @@ const api = {
     const manualLines = d.financeManualJournalLines || [];
     const allEntries = [...manualEntries, ...d.financeJournalEntries];
     const allLines = [...manualLines, ...d.financeJournalLines];
+    const balanceFor = accountName => allLines.filter(l => l.accountName === accountName).reduce((sum, l) => sum + num(l.debit) - num(l.credit), 0);
+    const bankAccounts = (d.bankAccounts || []).map(account => {
+      const linkedName = account.bank === 'Safaricom' ? 'M-Pesa Till' : account.bank === 'Cash' ? 'Cash on Hand' : 'KCB Bank';
+      const opening = num(account.openingBalance);
+      return { ...account, balance: opening + balanceFor(linkedName) };
+    });
+    const bankLineNames = ['KCB Bank', 'M-Pesa Till', 'Cash on Hand'];
+    const generatedBankTransactions = allLines
+      .filter(l => bankLineNames.includes(l.accountName))
+      .map((l, index) => ({
+        id: `ABTX-${index + 1}`,
+        accountName: l.accountName,
+        date: l.date,
+        reference: l.reference,
+        description: `${l.sourceModule} ${l.reference}`,
+        deposit: l.debit,
+        withdrawal: l.credit,
+        reconciled: Boolean(l.reconciled)
+      }));
     const revenue = Math.round(d.sales.reduce((s, x) => s + num(x.total), 0));
     const expenses = Math.round(d.expenses.reduce((s, x) => s + num(x.amount), 0));
     const cogs = Math.round(d.saleItems.reduce((s, x) => s + num(x.cost) * num(x.quantity), 0));
     const grossProfit = revenue - cogs;
     const netProfit = revenue - cogs - expenses;
-    const cashPosition = Math.round(d.bankAccounts.reduce((s, b) => s + num(b.balance), 0));
+    const cashPosition = Math.round(bankAccounts.reduce((s, b) => s + num(b.balance), 0));
     const ar = Math.round(d.accountsReceivable.reduce((s, x) => s + num(x.balance), 0));
     const ap = Math.round(d.financeAccountsPayable.reduce((s, x) => s + num(x.outstandingBalance), 0));
     const inventoryValue = Math.round(d.inventory.reduce((s, x) => s + num(x.quantity) * num(x.unitCost), 0));
@@ -3632,8 +3768,8 @@ const api = {
       ledger: [...(d.financeManualLedger || []), ...d.generalLedger],
       receivables: d.accountsReceivable,
       payables: d.financeAccountsPayable,
-      bankAccounts: d.bankAccounts,
-      bankTransactions: d.bankTransactions,
+      bankAccounts,
+      bankTransactions: generatedBankTransactions,
       expenses: d.expenses,
       payroll: d.payrollRecords,
       taxes: d.taxRecords,
@@ -3650,7 +3786,7 @@ const api = {
         { module: 'Procurement', records: d.purchaseOrders.length, journals: allEntries.filter(x => x.sourceModule === 'Procurement').length, status: 'Posting' },
         { module: 'Production', records: d.production.length, journals: allEntries.filter(x => x.sourceModule === 'Production').length, status: 'Posting' },
         { module: 'Taxes', records: d.taxRecords.length, journals: allEntries.filter(x => x.sourceModule === 'Taxes').length, status: 'Posting' },
-        { module: 'Banking', records: d.bankTransactions.length, journals: allEntries.filter(x => x.sourceModule === 'Banking').length, status: 'Posting' },
+        { module: 'Banking', records: generatedBankTransactions.length, journals: allEntries.filter(x => x.sourceModule === 'Banking' || generatedBankTransactions.some(tx => tx.reference === x.reference)).length, status: 'Posting' },
         { module: 'Manual Inputs', records: manualEntries.length, journals: manualEntries.length, status: 'Posting' }
       ]
     };
@@ -3675,6 +3811,48 @@ const api = {
     data().financeManualAuditLogs.unshift({ id: gid(), user: u.name, date: entry.date, module: 'Finance', action: 'Manual Journal Posted', reference: entry.reference, oldValue: '', newValue: `${amount}/${amount}`, reason: entry.description, approval: entry.approvalStatus, immutable: true });
     log(u, 'Post Manual Journal', 'Finance', entry.journalNo);
     return { success: true, entry };
+  },
+  saveFinanceAccount(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    assertRequired(row.code, 'Account code');
+    assertRequired(row.name, 'Account name');
+    assertRequired(row.type, 'Account type');
+    data().financeAccounts ||= [];
+    const existing = data().financeAccounts.find(a => a.id === row.id || a.code === row.code);
+    const record = {
+      id: existing?.id || gid(),
+      code: clean(row.code),
+      name: clean(row.name),
+      type: row.type,
+      parent: row.parent || row.type,
+      status: row.status || 'Active',
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    if (existing) Object.assign(existing, record);
+    else data().financeAccounts.push(record);
+    emitBusinessEvent(u, 'finance.account_saved', 'financeAccounts', record.id, { code: record.code, name: record.name, type: record.type });
+    log(u, existing ? 'Update Finance Account' : 'Create Finance Account', 'Finance', `${record.code} ${record.name}`);
+    return { success: true, account: record };
+  },
+  recordBankTransaction(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    assertPositive(row.amount, 'Amount');
+    const accountName = row.accountName || 'KCB Bank';
+    const amount = Math.round(num(row.amount));
+    const direction = row.direction || 'Deposit';
+    const bankAccount = data().financeAccounts.find(a => a.name === accountName) || data().financeAccounts.find(a => a.name === 'KCB Bank');
+    const offset = data().financeAccounts.find(a => a.id === row.offsetAccountId) || data().financeAccounts.find(a => a.name === 'Other Income') || data().financeAccounts.find(a => a.type === 'Revenue');
+    const journal = api.postManualJournal(u, {
+      amount,
+      date: row.date || today(),
+      description: row.description || `${direction} bank transaction`,
+      reference: row.reference || `BANK-${Date.now()}`,
+      debitAccountId: direction === 'Deposit' ? bankAccount?.id : offset?.id,
+      creditAccountId: direction === 'Deposit' ? offset?.id : bankAccount?.id
+    });
+    emitBusinessEvent(u, 'finance.bank_transaction_recorded', 'bankTransactions', journal.entry.id, { direction, accountName, amount });
+    return { success: true, transaction: journal.entry };
   },
   recordFinanceExpense(user, row = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);

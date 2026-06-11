@@ -201,6 +201,8 @@ em,
 .panel header { display: flex; justify-content: space-between; align-items: center; padding: 20px 20px 10px; }
 .panel h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
 .panel header button { height: 34px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }
+.panel-action-node { display: inline-flex; align-items: center; gap: 8px; }
+.panel-action-node .mini-action { min-height: 34px; height: 34px; display: inline-flex; align-items: center; gap: 7px; }
 .attention-list, .action-list, .forecast-card { padding: 8px 20px 20px; }
 .attention-list { display: grid; gap: 12px; }
 .attention-list article { border: 1px solid #eef0f3; border-left: 4px solid #ffac33; border-radius: 12px; padding: 14px; display: grid; gap: 8px; }

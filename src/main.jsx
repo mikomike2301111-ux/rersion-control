@@ -746,7 +746,9 @@ function Panel({ title, action, className = '', children }) {
     <article className={`panel ${className}`}>
       <header>
         <h2>{title}</h2>
-        {action && <button>{action}<ChevronDown size={14} /></button>}
+        {action && (typeof action === 'string'
+          ? <button>{action}<ChevronDown size={14} /></button>
+          : <div className="panel-action-node">{action}</div>)}
       </header>
       {children}
     </article>
@@ -2071,10 +2073,12 @@ function ProductionOrderModal({ user, formulas, onClose, onSaved }) {
 }
 
 function AccountsWorkspace({ user }) {
-  const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals'];
+  const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals', 'reconciliation', 'reports'];
   const [view, setView] = useRouteTab('accounts', tabs, 'overview');
   const [journalOpen, setJournalOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [], [refreshKey]);
   if (loading) return <Loading title="Accounts" />;
@@ -2122,21 +2126,31 @@ function AccountsWorkspace({ user }) {
               <SalesTrendChart data={data.trend} metric="cash" />
             </Panel>
             <Panel className="span-4" title="Posting Actions">
-              <FinanceQuickActions onJournal={() => setJournalOpen(true)} onExpense={() => setView('payables')} onPayment={() => setPaymentOpen(true)} />
+              <AccountsQuickActions
+                onJournal={() => setJournalOpen(true)}
+                onAccount={() => setAccountOpen(true)}
+                onBank={() => setBankOpen(true)}
+                onPayment={() => setPaymentOpen(true)}
+                onReports={() => setView('reports')}
+              />
             </Panel>
             <Panel className="span-6" title="Receivables Risk"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'balance', 'agingBucket', 'risk', 'status']} /></Panel>
             <Panel className="span-6" title="Payables Risk"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>
           </div>
         </>
       )}
-      {view === 'chart' && <Panel title="Chart of Accounts" action="Live"><SimpleTable rows={data.accounts} columns={['code', 'name', 'type', 'parent', 'status']} /></Panel>}
+      {view === 'chart' && <Panel title="Chart of Accounts" action={<button className="mini-action" onClick={() => setAccountOpen(true)}><Plus size={15} /> New Account</button>}><SimpleTable rows={data.accounts} columns={['code', 'name', 'type', 'parent', 'status']} /></Panel>}
       {view === 'receivables' && <Panel title="Accounts Receivable"><SimpleTable rows={data.receivables} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'agingBucket', 'risk', 'status']} /></Panel>}
       {view === 'payables' && <Panel title="Accounts Payable"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'invoiceAmount', 'paidAmount', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>}
-      {view === 'banking' && <Panel title="Bank & Cash Accounts"><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'currency', 'openingBalance', 'balance', 'status']} /></Panel>}
+      {view === 'banking' && <div className="dashboard-grid"><Panel className="span-5" title="Bank & Cash Accounts" action={<button className="mini-action" onClick={() => setBankOpen(true)}><Plus size={15} /> Bank Tx</button>}><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'currency', 'openingBalance', 'balance', 'status']} /></Panel><Panel className="span-7" title="Bank Transactions"><SimpleTable rows={data.bankTransactions} columns={['date', 'accountName', 'reference', 'description', 'deposit', 'withdrawal', 'reconciled']} /></Panel></div>}
       {view === 'trial' && <div className="dashboard-grid"><Panel className="span-4" title="Trial Balance"><FinanceTrialBalance journalLines={data.journalLines} /></Panel><Panel className="span-8" title="Ledger Lines"><SimpleTable rows={data.ledger} columns={['date', 'accountCode', 'accountName', 'debit', 'credit', 'sourceModule', 'reference']} /></Panel></div>}
       {view === 'journals' && <Panel title="Journal Entries" action="Balanced postings"><SimpleTable rows={data.journals} columns={['journalNo', 'date', 'description', 'sourceModule', 'reference', 'totalDebit', 'totalCredit', 'approvalStatus']} /></Panel>}
+      {view === 'reconciliation' && <FinanceReconciliation data={data} />}
+      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Financial" />}
       {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
       {paymentOpen && <FinancePaymentModal user={user} receivables={data.receivables} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); refresh(); setView('receivables'); }} />}
+      {accountOpen && <FinanceAccountModal user={user} onClose={() => setAccountOpen(false)} onSaved={() => { setAccountOpen(false); refresh(); setView('chart'); }} />}
+      {bankOpen && <FinanceBankTransactionModal user={user} accounts={data.accounts} onClose={() => setBankOpen(false)} onSaved={() => { setBankOpen(false); refresh(); setView('banking'); }} />}
     </section>
   );
 }
@@ -2271,6 +2285,18 @@ function FinanceQuickActions({ onJournal, onExpense, onPayment }) {
   );
 }
 
+function AccountsQuickActions({ onJournal, onAccount, onBank, onPayment, onReports }) {
+  return (
+    <div className="finance-action-stack">
+      <button onClick={onJournal}><Plus size={17} /><span>Post journal</span><em>Balanced debit and credit entry</em></button>
+      <button onClick={onAccount}><Landmark size={17} /><span>New account</span><em>Add chart-of-accounts control account</em></button>
+      <button onClick={onBank}><CircleDollarSign size={17} /><span>Bank transaction</span><em>Deposit or withdrawal with posting</em></button>
+      <button onClick={onPayment}><ReceiptText size={17} /><span>Receive payment</span><em>Update AR and cash position</em></button>
+      <button onClick={onReports}><FileText size={17} /><span>Accounts reports</span><em>Trial balance, AR/AP, cash, ledger exports</em></button>
+    </div>
+  );
+}
+
 function FinanceTrialBalance({ journalLines = [] }) {
   const debit = journalLines.reduce((sum, row) => sum + Number(row.debit || 0), 0);
   const credit = journalLines.reduce((sum, row) => sum + Number(row.credit || 0), 0);
@@ -2347,6 +2373,78 @@ function FinanceJournalModal({ user, accounts, onClose, onSaved }) {
         <label>Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
         <label>Reference<input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} /></label>
         <button className="primary-action" disabled={saving}>{saving ? 'Posting...' : 'Post Balanced Journal'}</button>
+      </form>
+    </div>
+  );
+}
+
+function FinanceAccountModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({ code: '', name: '', type: 'Asset', parent: 'Asset', status: 'Active' });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('saveFinanceAccount', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>New Chart Account</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Account Code<input value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="1120" required /></label>
+          <label>Account Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Farm Inputs Receivable" required /></label>
+          <label>Type<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value, parent: e.target.value })}>{['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Active', 'Inactive'].map(x => <option key={x}>{x}</option>)}</select></label>
+        </div>
+        <label>Parent / Group<input value={form.parent} onChange={e => setForm({ ...form, parent: e.target.value })} /></label>
+        <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Save Account'}</button>
+      </form>
+    </div>
+  );
+}
+
+function FinanceBankTransactionModal({ user, accounts, onClose, onSaved }) {
+  const bankAccounts = accounts.filter(a => ['KCB Bank', 'M-Pesa Till', 'Cash on Hand'].includes(a.name));
+  const offsetAccounts = accounts.filter(a => !['KCB Bank', 'M-Pesa Till', 'Cash on Hand'].includes(a.name));
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    direction: 'Deposit',
+    accountName: bankAccounts[0]?.name || 'KCB Bank',
+    offsetAccountId: offsetAccounts.find(a => a.type === 'Revenue')?.id || offsetAccounts[0]?.id || '',
+    amount: 0,
+    description: 'Bank transaction',
+    reference: `BANK-${Date.now()}`
+  });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('recordBankTransaction', [user, form]);
+      onSaved?.();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={save}>
+        <header><h2>Bank / Cash Transaction</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="modal-grid">
+          <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+          <label>Direction<select value={form.direction} onChange={e => setForm({ ...form, direction: e.target.value })}>{['Deposit', 'Withdrawal'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Bank / Cash Account<select value={form.accountName} onChange={e => setForm({ ...form, accountName: e.target.value })}>{bankAccounts.map(a => <option key={a.id} value={a.name}>{a.code} - {a.name}</option>)}</select></label>
+          <label>Offset Account<select value={form.offsetAccountId} onChange={e => setForm({ ...form, offsetAccountId: e.target.value })}>{offsetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} - {a.name}</option>)}</select></label>
+          <label>Amount<input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></label>
+          <label>Reference<input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} /></label>
+        </div>
+        <label>Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>
+        <button className="primary-action" disabled={saving}>{saving ? 'Posting...' : 'Post Bank Transaction'}</button>
       </form>
     </div>
   );
